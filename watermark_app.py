@@ -10,7 +10,7 @@ try:
         QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
         QFileDialog, QListWidget, QListWidgetItem, QSlider, QComboBox, QLineEdit,
         QGroupBox, QRadioButton, QCheckBox, QMessageBox, QSplitter, QFrame,
-        QGridLayout, QInputDialog, QScrollArea, QSizePolicy
+        QGridLayout, QInputDialog, QScrollArea, QSizePolicy, QAbstractItemView
     )
     from PyQt5.QtGui import (
         QPixmap, QImage, QFont, QColor, QPainter, QDrag, QIcon
@@ -25,7 +25,7 @@ except Exception:
             QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
             QFileDialog, QListWidget, QListWidgetItem, QSlider, QComboBox, QLineEdit,
             QGroupBox, QRadioButton, QCheckBox, QMessageBox, QSplitter, QFrame,
-            QGridLayout, QInputDialog, QScrollArea, QSizePolicy
+            QGridLayout, QInputDialog, QScrollArea, QSizePolicy, QAbstractItemView
         )
         from PySide6.QtGui import (
             QPixmap, QImage, QFont, QColor, QPainter, QDrag, QIcon
@@ -66,6 +66,8 @@ class WatermarkApp(QMainWindow):
         # 设置中心部件
         self.central_widget = QWidget()
         self.setCentralWidget(self.central_widget)
+        # 启用整窗体拖放导入
+        self.setAcceptDrops(True)
         
         # 创建主布局
         self.main_layout = QHBoxLayout(self.central_widget)
@@ -78,15 +80,45 @@ class WatermarkApp(QMainWindow):
         
         # 加载上次的设置
         self.load_settings()
+
+    # ==== 拖拽导入支持 ====
+    def dragEnterEvent(self, event):
+        """主窗口拖入事件"""
+        self._drag_enter_event(event)
+
+    def dropEvent(self, event):
+        """主窗口放下事件"""
+        self._drop_event(event)
         
     def create_left_panel(self):
         """创建左侧面板，包含图片列表和导入/导出按钮"""
         left_panel = QWidget()
         left_layout = QVBoxLayout(left_panel)
         left_panel.setMinimumWidth(260)
+        # 容器本身也接受拖拽导入
+        left_panel.setAcceptDrops(True)
+        left_panel.dragEnterEvent = self._drag_enter_event
+        left_panel.dropEvent = self._drop_event
         
         # 图片列表
-        self.image_list = QListWidget()
+        class DropListWidget(QListWidget):
+            def __init__(self, host):
+                super().__init__()
+                self._host = host
+                self.setAcceptDrops(True)
+                # 禁用内部拖拽移动，避免与外部文件拖放冲突
+                self.setDragDropMode(QAbstractItemView.NoDragDrop)
+
+            def dragEnterEvent(self, event):
+                self._host._drag_enter_event(event)
+
+            def dragMoveEvent(self, event):
+                self._host._drag_enter_event(event)
+
+            def dropEvent(self, event):
+                self._host._drop_event(event)
+
+        self.image_list = DropListWidget(self)
         self.image_list.setIconSize(QSize(80, 80))
         self.image_list.itemClicked.connect(self.on_image_selected)
         left_layout.addWidget(QLabel("已导入图片:"))
@@ -132,6 +164,10 @@ class WatermarkApp(QMainWindow):
         self.preview_label.setMouseTracking(True)
         self.preview_label.mousePressEvent = self._preview_mouse_press_event
         self.preview_label.mouseMoveEvent = self._preview_mouse_move_event
+        # 预览区支持拖放导入
+        self.preview_label.setAcceptDrops(True)
+        self.preview_label.dragEnterEvent = self._drag_enter_event
+        self.preview_label.dropEvent = self._drop_event
         preview_layout.addWidget(self.preview_label)
         
         # 水印设置
@@ -283,6 +319,52 @@ class WatermarkApp(QMainWindow):
                         file_paths.append(os.path.join(root, file))
             
             self.add_images(file_paths)
+
+    # 拖放事件处理（复用于主窗体/列表/预览）
+    def _drag_enter_event(self, event):
+        mime = event.mimeData()
+        if mime.hasUrls():
+            # 如果包含至少一个支持的文件/目录则接受
+            urls = mime.urls()
+            for url in urls:
+                path = url.toLocalFile()
+                if not path:
+                    continue
+                if os.path.isdir(path) or self._is_supported_image(path):
+                    event.acceptProposedAction()
+                    return
+        event.ignore()
+
+    def _drop_event(self, event):
+        mime = event.mimeData()
+        paths = []
+        if mime.hasUrls():
+            for url in mime.urls():
+                path = url.toLocalFile()
+                if not path:
+                    continue
+                if os.path.isdir(path):
+                    paths.extend(self._scan_directory_for_images(path))
+                elif self._is_supported_image(path):
+                    paths.append(path)
+        if paths:
+            self.add_images(paths)
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def _is_supported_image(self, path):
+        exts = {'.jpg', '.jpeg', '.png', '.bmp', '.tiff'}
+        return os.path.splitext(path)[1].lower() in exts
+
+    def _scan_directory_for_images(self, folder_path):
+        exts = {'.jpg', '.jpeg', '.png', '.bmp', '.tiff'}
+        files = []
+        for root, _, names in os.walk(folder_path):
+            for name in names:
+                if os.path.splitext(name)[1].lower() in exts:
+                    files.append(os.path.join(root, name))
+        return files
     
     def add_images(self, file_paths):
         """添加图片到列表"""
