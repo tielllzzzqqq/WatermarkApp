@@ -1,0 +1,16 @@
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store
+dist/
+build/
+*.dmg
+*.pkg
+WatermarkApp.app/
+*.spec
+*.log
+*.toc
+base_library.zip
+localpycs/
+PYZ-00.pyz
