@@ -52,6 +52,7 @@ from watermark.templates_io import add_or_update_template, list_template_names, 
 from watermark.media import is_supported_image, scan_directory_for_images, make_output_basename
 from watermark.preview import pil_to_qimage
 from ui.preview_basic import PreviewBasicUI
+from ui.font_settings import FontSettingsUI
 
 class WatermarkApp(QMainWindow):
     def __init__(self):
@@ -141,34 +142,9 @@ class WatermarkApp(QMainWindow):
         # 基础设置（文本与透明度）
         settings_layout.addWidget(_pb.basic_settings)
         
-        # 字体设置（高级）
-        font_group = QGroupBox("字体设置（可选）")
-        font_layout = QGridLayout(font_group)
-        # 字体选择
-        font_layout.addWidget(QLabel("字体:"), 0, 0)
-        self.font_combo = QComboBox()
-        self.font_combo.addItem("自动选择（推荐）", userData=None)
-        for name, path in self._available_fonts:
-            self.font_combo.addItem(name, userData=path)
-        self.font_combo.currentIndexChanged.connect(self.on_font_selected)
-        font_layout.addWidget(self.font_combo, 0, 1)
-        # 字号
-        font_layout.addWidget(QLabel("字号:"), 1, 0)
-        self.font_size_spin = QSpinBox()
-        self.font_size_spin.setRange(8, 512)
-        self.font_size_spin.setValue(self.font_size_user)
-        self.font_size_spin.valueChanged.connect(self.on_font_size_changed)
-        font_layout.addWidget(self.font_size_spin, 1, 1)
-        # 粗体 / 斜体
-        self.font_bold_check = QCheckBox("粗体")
-        self.font_bold_check.setChecked(self.font_bold)
-        self.font_bold_check.stateChanged.connect(self.on_font_bold_changed)
-        font_layout.addWidget(self.font_bold_check, 2, 0)
-        self.font_italic_check = QCheckBox("斜体")
-        self.font_italic_check.setChecked(self.font_italic)
-        self.font_italic_check.stateChanged.connect(self.on_font_italic_changed)
-        font_layout.addWidget(self.font_italic_check, 2, 1)
-        settings_layout.addWidget(font_group)
+        # 字体设置（子组件）
+        _fs = FontSettingsUI(self)
+        settings_layout.addWidget(_fs.group)
         
         # 位置设置
         position_group = QGroupBox("水印位置")
