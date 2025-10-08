@@ -112,61 +112,65 @@ class WatermarkApp(QMainWindow):
         self._drop_event(event)
         
     def create_left_panel(self):
-        """创建左侧面板，包含图片列表和导入/导出按钮"""
-        left_panel = QWidget()
-        left_layout = QVBoxLayout(left_panel)
-        left_panel.setMinimumWidth(260)
-        # 容器本身也接受拖拽导入
-        left_panel.setAcceptDrops(True)
-        left_panel.dragEnterEvent = self._drag_enter_event
-        left_panel.dropEvent = self._drop_event
-        
-        # 图片列表
-        class DropListWidget(QListWidget):
-            def __init__(self, host):
-                super().__init__()
-                self._host = host
-                self.setAcceptDrops(True)
-                # 禁用内部拖拽移动，避免与外部文件拖放冲突
-                self.setDragDropMode(QAbstractItemView.NoDragDrop)
+        """创建左侧面板（解耦为子组件）"""
+        try:
+            from ui.left_panel import LeftPanel
+        except Exception:
+            LeftPanel = None
 
-            def dragEnterEvent(self, event):
-                self._host._drag_enter_event(event)
-
-            def dragMoveEvent(self, event):
-                self._host._drag_enter_event(event)
-
-            def dropEvent(self, event):
-                self._host._drop_event(event)
-
-        self.image_list = DropListWidget(self)
-        self.image_list.setIconSize(QSize(80, 80))
-        self.image_list.itemClicked.connect(self.on_image_selected)
-        left_layout.addWidget(QLabel("已导入图片:"))
-        left_layout.addWidget(self.image_list)
-        
-        # 导入按钮
-        import_layout = QHBoxLayout()
-        self.import_button = QPushButton("导入图片")
-        self.import_button.clicked.connect(self.import_images)
-        self.import_folder_button = QPushButton("导入文件夹")
-        self.import_folder_button.clicked.connect(self.import_folder)
-        import_layout.addWidget(self.import_button)
-        import_layout.addWidget(self.import_folder_button)
-        left_layout.addLayout(import_layout)
-        
-        # 导出按钮
-        export_layout = QHBoxLayout()
-        self.export_button = QPushButton("导出图片")
-        self.export_button.clicked.connect(self.export_images)
-        self.export_all_button = QPushButton("导出全部")
-        self.export_all_button.clicked.connect(lambda: self.export_images(all_images=True))
-        export_layout.addWidget(self.export_button)
-        export_layout.addWidget(self.export_all_button)
-        left_layout.addLayout(export_layout)
-        
-        # 添加到主布局
-        self.main_layout.addWidget(left_panel, 1)
+        if LeftPanel is None:
+            # 回退到旧实现，保证运行时不崩溃
+            left_panel = QWidget()
+            left_layout = QVBoxLayout(left_panel)
+            left_panel.setMinimumWidth(260)
+            left_panel.setAcceptDrops(True)
+            left_panel.dragEnterEvent = self._drag_enter_event
+            left_panel.dropEvent = self._drop_event
+            class DropListWidget(QListWidget):
+                def __init__(self, host):
+                    super().__init__()
+                    self._host = host
+                    self.setAcceptDrops(True)
+                    self.setDragDropMode(QAbstractItemView.NoDragDrop)
+                def dragEnterEvent(self, event):
+                    self._host._drag_enter_event(event)
+                def dragMoveEvent(self, event):
+                    self._host._drag_enter_event(event)
+                def dropEvent(self, event):
+                    self._host._drop_event(event)
+            self.image_list = DropListWidget(self)
+            self.image_list.setIconSize(QSize(80, 80))
+            self.image_list.itemClicked.connect(self.on_image_selected)
+            left_layout.addWidget(QLabel("已导入图片:"))
+            left_layout.addWidget(self.image_list)
+            import_layout = QHBoxLayout()
+            self.import_button = QPushButton("导入图片")
+            self.import_button.clicked.connect(self.import_images)
+            self.import_folder_button = QPushButton("导入文件夹")
+            self.import_folder_button.clicked.connect(self.import_folder)
+            import_layout.addWidget(self.import_button)
+            import_layout.addWidget(self.import_folder_button)
+            left_layout.addLayout(import_layout)
+            export_layout = QHBoxLayout()
+            self.export_button = QPushButton("导出图片")
+            self.export_button.clicked.connect(self.export_images)
+            self.export_all_button = QPushButton("导出全部")
+            self.export_all_button.clicked.connect(lambda: self.export_images(all_images=True))
+            export_layout.addWidget(self.export_button)
+            export_layout.addWidget(self.export_all_button)
+            left_layout.addLayout(export_layout)
+            self.main_layout.addWidget(left_panel, 1)
+        else:
+            # 使用子组件实现
+            self.left_panel = LeftPanel(self)
+            self.left_panel.setMinimumWidth(260)
+            # 引用控件到主类，保持后续逻辑可用
+            self.image_list = self.left_panel.image_list
+            self.import_button = self.left_panel.import_button
+            self.import_folder_button = self.left_panel.import_folder_button
+            self.export_button = self.left_panel.export_button
+            self.export_all_button = self.left_panel.export_all_button
+            self.main_layout.addWidget(self.left_panel, 1)
         
     def create_right_panel(self):
         """创建右侧面板，包含预览和水印设置"""
