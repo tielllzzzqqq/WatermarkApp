@@ -48,6 +48,9 @@ from watermark.fonts import scan_system_font_files, load_font
 from watermark.processing import apply_text_watermark
 from watermark.exporting import resize_image_proportionally, save_image
 from watermark.settings_io import read_settings, write_settings
+from watermark.templates_io import add_or_update_template, list_template_names, find_template, normalize_template_fields
+from watermark.media import is_supported_image, scan_directory_for_images, make_output_basename
+from watermark.preview import pil_to_qimage
 
 class WatermarkApp(QMainWindow):
     def __init__(self):
@@ -462,17 +465,10 @@ class WatermarkApp(QMainWindow):
             event.ignore()
 
     def _is_supported_image(self, path):
-        exts = {'.jpg', '.jpeg', '.png', '.bmp', '.tiff'}
-        return os.path.splitext(path)[1].lower() in exts
+        return is_supported_image(path)
 
     def _scan_directory_for_images(self, folder_path):
-        exts = {'.jpg', '.jpeg', '.png', '.bmp', '.tiff'}
-        files = []
-        for root, _, names in os.walk(folder_path):
-            for name in names:
-                if os.path.splitext(name)[1].lower() in exts:
-                    files.append(os.path.join(root, name))
-        return files
+        return scan_directory_for_images(folder_path)
     
     def add_images(self, file_paths):
         """添加图片到列表"""
@@ -536,9 +532,7 @@ class WatermarkApp(QMainWindow):
                 self._last_image_size = (watermarked_img.width, watermarked_img.height)
                 
                 # 转换为QPixmap并显示
-                watermarked_img = watermarked_img.convert("RGBA")
-                data = watermarked_img.tobytes("raw", "RGBA")
-                qimg = QImage(data, watermarked_img.width, watermarked_img.height, QImage.Format_RGBA8888)
+                qimg = pil_to_qimage(watermarked_img)
                 pixmap = QPixmap.fromImage(qimg)
                 
                 # 缩放以适应预览区域
@@ -616,14 +610,7 @@ class WatermarkApp(QMainWindow):
                 
                 # 生成输出文件名
                 filename = os.path.basename(input_path)
-                name, _ = os.path.splitext(filename)
-                
-                if self.output_naming == "prefix":
-                    output_name = f"{self.output_prefix}{name}"
-                elif self.output_naming == "suffix":
-                    output_name = f"{name}{self.output_suffix}"
-                else:  # original
-                    output_name = name
+                output_name = make_output_basename(filename, self.output_naming, self.output_prefix, self.output_suffix)
                 
                 # 添加扩展名
                 if self.output_format.lower() == "jpeg":
@@ -804,7 +791,7 @@ class WatermarkApp(QMainWindow):
                 "font_italic": self.font_italic
             }
             
-            self.templates.append(template)
+            self.templates = add_or_update_template(self.templates, template)
             self.save_settings()
             QMessageBox.information(self, "成功", f"模板 '{template_name}' 已保存")
     
@@ -814,33 +801,33 @@ class WatermarkApp(QMainWindow):
             QMessageBox.information(self, "提示", "没有保存的模板")
             return
         
-        template_names = [t["name"] for t in self.templates]
+        template_names = list_template_names(self.templates)
         template_name, ok = QInputDialog.getItem(self, "加载模板", "选择模板:", template_names, 0, False)
         
         if ok and template_name:
-            for template in self.templates:
-                if template["name"] == template_name:
-                    self.load_template(template)
-                    break
+            tpl = find_template(self.templates, template_name)
+            if tpl:
+                self.load_template(tpl)
     
     def load_template(self, template):
         """加载模板"""
-        self.watermark_text = template["text"]
-        self.watermark_opacity = template["opacity"]
-        self.watermark_position = template["position"]
-        self.output_format = template["format"]
-        self.output_naming = template["naming"]
-        self.output_prefix = template["prefix"]
-        self.output_suffix = template["suffix"]
-        self.jpeg_quality = template.get("jpeg_quality", self.jpeg_quality)
-        self.resize_mode = template.get("resize_mode", self.resize_mode)
-        self.resize_width = template.get("resize_width", self.resize_width)
-        self.resize_height = template.get("resize_height", self.resize_height)
-        self.resize_percent = template.get("resize_percent", self.resize_percent)
-        self.font_path = template.get("font_path", self.font_path)
-        self.font_size_user = int(template.get("font_size", self.font_size_user))
-        self.font_bold = bool(template.get("font_bold", self.font_bold))
-        self.font_italic = bool(template.get("font_italic", self.font_italic))
+        tpl = normalize_template_fields(template)
+        self.watermark_text = tpl["text"]
+        self.watermark_opacity = tpl["opacity"]
+        self.watermark_position = tpl["position"]
+        self.output_format = tpl["format"]
+        self.output_naming = tpl["naming"]
+        self.output_prefix = tpl["prefix"]
+        self.output_suffix = tpl["suffix"]
+        self.jpeg_quality = tpl.get("jpeg_quality", self.jpeg_quality)
+        self.resize_mode = tpl.get("resize_mode", self.resize_mode)
+        self.resize_width = tpl.get("resize_width", self.resize_width)
+        self.resize_height = tpl.get("resize_height", self.resize_height)
+        self.resize_percent = tpl.get("resize_percent", self.resize_percent)
+        self.font_path = tpl.get("font_path", self.font_path)
+        self.font_size_user = int(tpl.get("font_size", self.font_size_user))
+        self.font_bold = bool(tpl.get("font_bold", self.font_bold))
+        self.font_italic = bool(tpl.get("font_italic", self.font_italic))
         
         # 更新UI
         self.text_input.setText(self.watermark_text)
