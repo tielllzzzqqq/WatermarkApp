@@ -54,6 +54,7 @@ from watermark.preview import pil_to_qimage
 from ui.preview_basic import PreviewBasicUI
 from ui.font_settings import FontSettingsUI
 from ui.position_grid import PositionGridUI
+from ui.output_settings import OutputSettingsUI
 
 class WatermarkApp(QMainWindow):
     def __init__(self):
@@ -153,118 +154,9 @@ class WatermarkApp(QMainWindow):
 
         # 无需手动拖拽开关，拖拽默认可用
         
-        # 输出设置
-        output_group = QGroupBox("输出设置")
-        output_layout = QVBoxLayout(output_group)
-        
-        # 输出格式
-        format_layout = QHBoxLayout()
-        format_layout.addWidget(QLabel("输出格式:"))
-        self.format_combo = QComboBox()
-        self.format_combo.addItems(["PNG", "JPEG"])
-        self.format_combo.currentTextChanged.connect(self.on_format_changed)
-        format_layout.addWidget(self.format_combo)
-        output_layout.addLayout(format_layout)
-
-        # JPEG 质量设置（仅在选择 JPEG 时显示）
-        self.jpeg_quality_container = QWidget()
-        jq_layout = QHBoxLayout(self.jpeg_quality_container)
-        jq_layout.addWidget(QLabel("JPEG质量:"))
-        self.jpeg_quality_slider = QSlider(Qt.Horizontal)
-        self.jpeg_quality_slider.setRange(0, 100)
-        self.jpeg_quality_slider.setValue(self.jpeg_quality)
-        self.jpeg_quality_slider.valueChanged.connect(self.on_jpeg_quality_changed)
-        self.jpeg_quality_value_label = QLabel(f"{self.jpeg_quality}")
-        jq_layout.addWidget(self.jpeg_quality_slider)
-        jq_layout.addWidget(self.jpeg_quality_value_label)
-        output_layout.addWidget(self.jpeg_quality_container)
-        # 初始显隐
-        self.jpeg_quality_container.setVisible(self.output_format.lower() == "jpeg")
-
-        # 导出缩放设置
-        self.resize_container = QGroupBox("导出缩放")
-        resize_v = QVBoxLayout(self.resize_container)
-        # 模式选择
-        resize_mode_layout = QHBoxLayout()
-        resize_mode_layout.addWidget(QLabel("缩放模式:"))
-        self.resize_mode_combo = QComboBox()
-        self.resize_mode_combo.addItems(["不缩放", "按宽度", "按高度", "按百分比"])
-        self.resize_mode_combo.currentTextChanged.connect(self.on_resize_mode_changed)
-        resize_mode_layout.addWidget(self.resize_mode_combo)
-        resize_v.addLayout(resize_mode_layout)
-        # 宽度输入
-        self.resize_width_row = QWidget()
-        rw_layout = QHBoxLayout(self.resize_width_row)
-        rw_layout.addWidget(QLabel("目标宽度:"))
-        self.resize_width_spin = QSpinBox()
-        self.resize_width_spin.setRange(1, 10000)
-        self.resize_width_spin.setValue(self.resize_width)
-        self.resize_width_spin.valueChanged.connect(self.on_resize_width_changed)
-        rw_layout.addWidget(self.resize_width_spin)
-        resize_v.addWidget(self.resize_width_row)
-        # 高度输入
-        self.resize_height_row = QWidget()
-        rh_layout = QHBoxLayout(self.resize_height_row)
-        rh_layout.addWidget(QLabel("目标高度:"))
-        self.resize_height_spin = QSpinBox()
-        self.resize_height_spin.setRange(1, 10000)
-        self.resize_height_spin.setValue(self.resize_height)
-        self.resize_height_spin.valueChanged.connect(self.on_resize_height_changed)
-        rh_layout.addWidget(self.resize_height_spin)
-        resize_v.addWidget(self.resize_height_row)
-        # 百分比输入
-        self.resize_percent_row = QWidget()
-        rp_layout = QHBoxLayout(self.resize_percent_row)
-        rp_layout.addWidget(QLabel("缩放百分比:"))
-        self.resize_percent_spin = QSpinBox()
-        self.resize_percent_spin.setRange(1, 500)
-        self.resize_percent_spin.setSuffix(" %")
-        self.resize_percent_spin.setValue(self.resize_percent)
-        self.resize_percent_spin.valueChanged.connect(self.on_resize_percent_changed)
-        rp_layout.addWidget(self.resize_percent_spin)
-        resize_v.addWidget(self.resize_percent_row)
-        output_layout.addWidget(self.resize_container)
-        # 初始显隐
-        self._update_resize_rows_visibility()
-        
-        # 命名规则
-        naming_layout = QVBoxLayout()
-        naming_layout.addWidget(QLabel("命名规则:"))
-        
-        self.naming_prefix_radio = QRadioButton("添加前缀")
-        self.naming_prefix_radio.setChecked(self.output_naming == "prefix")
-        self.naming_prefix_radio.toggled.connect(lambda: self.on_naming_rule_changed("prefix"))
-        
-        self.naming_suffix_radio = QRadioButton("添加后缀")
-        self.naming_suffix_radio.setChecked(self.output_naming == "suffix")
-        self.naming_suffix_radio.toggled.connect(lambda: self.on_naming_rule_changed("suffix"))
-        
-        self.naming_original_radio = QRadioButton("保留原文件名")
-        self.naming_original_radio.setChecked(self.output_naming == "original")
-        self.naming_original_radio.toggled.connect(lambda: self.on_naming_rule_changed("original"))
-        
-        naming_layout.addWidget(self.naming_prefix_radio)
-        naming_layout.addWidget(self.naming_suffix_radio)
-        naming_layout.addWidget(self.naming_original_radio)
-        
-        # 前缀/后缀输入
-        prefix_layout = QHBoxLayout()
-        prefix_layout.addWidget(QLabel("前缀:"))
-        self.prefix_input = QLineEdit(self.output_prefix)
-        self.prefix_input.textChanged.connect(self.on_prefix_changed)
-        prefix_layout.addWidget(self.prefix_input)
-        
-        suffix_layout = QHBoxLayout()
-        suffix_layout.addWidget(QLabel("后缀:"))
-        self.suffix_input = QLineEdit(self.output_suffix)
-        self.suffix_input.textChanged.connect(self.on_suffix_changed)
-        suffix_layout.addWidget(self.suffix_input)
-        
-        naming_layout.addLayout(prefix_layout)
-        naming_layout.addLayout(suffix_layout)
-        output_layout.addLayout(naming_layout)
-        
-        settings_layout.addWidget(output_group)
+        # 输出设置（子组件）
+        _os = OutputSettingsUI(self)
+        settings_layout.addWidget(_os.group)
 
         # 模板管理
         template_layout = QHBoxLayout()
