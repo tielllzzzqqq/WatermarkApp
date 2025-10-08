@@ -62,6 +62,7 @@ class WatermarkApp(QMainWindow):
         self.output_suffix = "_watermarked"  # 默认后缀
         self.templates = []  # 存储水印模板
         self._last_image_size = None  # 最近一次预览的原图尺寸 (w, h)
+        self.jpeg_quality = 85  # JPEG 质量默认值 (0-100)
         
         # 设置中心部件
         self.central_widget = QWidget()
@@ -228,6 +229,21 @@ class WatermarkApp(QMainWindow):
         self.format_combo.currentTextChanged.connect(self.on_format_changed)
         format_layout.addWidget(self.format_combo)
         output_layout.addLayout(format_layout)
+
+        # JPEG 质量设置（仅在选择 JPEG 时显示）
+        self.jpeg_quality_container = QWidget()
+        jq_layout = QHBoxLayout(self.jpeg_quality_container)
+        jq_layout.addWidget(QLabel("JPEG质量:"))
+        self.jpeg_quality_slider = QSlider(Qt.Horizontal)
+        self.jpeg_quality_slider.setRange(0, 100)
+        self.jpeg_quality_slider.setValue(self.jpeg_quality)
+        self.jpeg_quality_slider.valueChanged.connect(self.on_jpeg_quality_changed)
+        self.jpeg_quality_value_label = QLabel(f"{self.jpeg_quality}")
+        jq_layout.addWidget(self.jpeg_quality_slider)
+        jq_layout.addWidget(self.jpeg_quality_value_label)
+        output_layout.addWidget(self.jpeg_quality_container)
+        # 初始显隐
+        self.jpeg_quality_container.setVisible(self.output_format.lower() == "jpeg")
         
         # 命名规则
         naming_layout = QVBoxLayout()
@@ -576,7 +592,7 @@ class WatermarkApp(QMainWindow):
                 # 保存图片
                 if self.output_format.lower() == "jpeg":
                     watermarked_img = watermarked_img.convert("RGB")
-                    watermarked_img.save(output_path, "JPEG", quality=95)
+                    watermarked_img.save(output_path, "JPEG", quality=int(self.jpeg_quality))
                 else:
                     watermarked_img.save(output_path, "PNG")
         
@@ -604,6 +620,15 @@ class WatermarkApp(QMainWindow):
     def on_format_changed(self, format_text):
         """输出格式变更"""
         self.output_format = format_text.lower()
+        # 切换 JPEG 时显示质量控制
+        if hasattr(self, "jpeg_quality_container"):
+            self.jpeg_quality_container.setVisible(self.output_format == "jpeg")
+
+    def on_jpeg_quality_changed(self, value):
+        """JPEG 质量变更"""
+        self.jpeg_quality = int(value)
+        if hasattr(self, "jpeg_quality_value_label"):
+            self.jpeg_quality_value_label.setText(f"{self.jpeg_quality}")
     
     def on_naming_rule_changed(self, rule):
         """命名规则变更"""
@@ -682,7 +707,8 @@ class WatermarkApp(QMainWindow):
                 "format": self.output_format,
                 "naming": self.output_naming,
                 "prefix": self.output_prefix,
-                "suffix": self.output_suffix
+                "suffix": self.output_suffix,
+                "jpeg_quality": self.jpeg_quality
             }
             
             self.templates.append(template)
@@ -713,6 +739,7 @@ class WatermarkApp(QMainWindow):
         self.output_naming = template["naming"]
         self.output_prefix = template["prefix"]
         self.output_suffix = template["suffix"]
+        self.jpeg_quality = template.get("jpeg_quality", self.jpeg_quality)
         
         # 更新UI
         self.text_input.setText(self.watermark_text)
@@ -722,6 +749,10 @@ class WatermarkApp(QMainWindow):
             self.format_combo.setCurrentIndex(1)
         else:
             self.format_combo.setCurrentIndex(0)
+        # 更新 JPEG 质量 UI
+        if hasattr(self, "jpeg_quality_slider"):
+            self.jpeg_quality_slider.setValue(int(self.jpeg_quality))
+            self.jpeg_quality_value_label.setText(f"{int(self.jpeg_quality)}")
         
         if self.output_naming == "prefix":
             self.naming_prefix_radio.setChecked(True)
@@ -745,6 +776,7 @@ class WatermarkApp(QMainWindow):
             "output_naming": self.output_naming,
             "output_prefix": self.output_prefix,
             "output_suffix": self.output_suffix,
+            "jpeg_quality": self.jpeg_quality,
             "templates": self.templates
         }
         
@@ -771,6 +803,7 @@ class WatermarkApp(QMainWindow):
                 self.output_prefix = settings.get("output_prefix", self.output_prefix)
                 self.output_suffix = settings.get("output_suffix", self.output_suffix)
                 self.templates = settings.get("templates", [])
+                self.jpeg_quality = settings.get("jpeg_quality", self.jpeg_quality)
                 
                 # 更新UI
                 self.text_input.setText(self.watermark_text)
@@ -778,6 +811,8 @@ class WatermarkApp(QMainWindow):
                 
                 if self.output_format.lower() == "jpeg":
                     self.format_combo.setCurrentIndex(1)
+                else:
+                    self.format_combo.setCurrentIndex(0)
                 
                 if self.output_naming == "prefix":
                     self.naming_prefix_radio.setChecked(True)
@@ -788,6 +823,13 @@ class WatermarkApp(QMainWindow):
                 
                 self.prefix_input.setText(self.output_prefix)
                 self.suffix_input.setText(self.output_suffix)
+                # 更新 JPEG 质量 UI 显示与数值
+                if hasattr(self, "jpeg_quality_container"):
+                    self.jpeg_quality_container.setVisible(self.output_format.lower() == "jpeg")
+                if hasattr(self, "jpeg_quality_slider"):
+                    self.jpeg_quality_slider.setValue(int(self.jpeg_quality))
+                if hasattr(self, "jpeg_quality_value_label"):
+                    self.jpeg_quality_value_label.setText(f"{int(self.jpeg_quality)}")
         except Exception as e:
             print(f"加载设置失败: {e}")
     
