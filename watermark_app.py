@@ -86,6 +86,7 @@ class WatermarkApp(QMainWindow):
         self.font_size_user = 36  # 用户指定字号（像素），0 表示自动
         self.font_bold = False
         self.font_italic = False
+        self.font_color = "#000000"  # 文本颜色（默认黑色，#RRGGBB）
         self._available_fonts = scan_system_font_files()
         
         # 设置中心部件
@@ -338,6 +339,7 @@ class WatermarkApp(QMainWindow):
             font_size_user=int(self.font_size_user),
             font_bold=bool(self.font_bold),
             font_italic=bool(self.font_italic),
+            font_color=self.font_color,
         )
 
     def _load_font(self, font_size):
@@ -363,6 +365,23 @@ class WatermarkApp(QMainWindow):
 
     def on_font_italic_changed(self, state):
         self.font_italic = (state == Qt.Checked)
+        self.update_preview()
+
+    def on_font_color_changed(self, hex_color):
+        """当字体颜色调整时更新状态并刷新预览"""
+        try:
+            val = str(hex_color).strip()
+            # 简单校验 #RRGGBB
+            if isinstance(val, str) and len(val) == 7 and val.startswith('#'):
+                self.font_color = val
+            else:
+                # 不合法则忽略，保持原值
+                pass
+        except Exception:
+            pass
+        # 更新预览按钮背景（如存在）
+        if hasattr(self, "font_color_preview"):
+            self.font_color_preview.setStyleSheet(f"background:{self.font_color}; border:1px solid #888;")
         self.update_preview()
     
     def export_images(self, all_images=False):
@@ -567,7 +586,8 @@ class WatermarkApp(QMainWindow):
                 "font_path": self.font_path,
                 "font_size": self.font_size_user,
                 "font_bold": self.font_bold,
-                "font_italic": self.font_italic
+                "font_italic": self.font_italic,
+                "font_color": self.font_color,
             }
             
             self.templates = add_or_update_template(self.templates, template)
@@ -607,6 +627,7 @@ class WatermarkApp(QMainWindow):
         self.font_size_user = int(tpl.get("font_size", self.font_size_user))
         self.font_bold = bool(tpl.get("font_bold", self.font_bold))
         self.font_italic = bool(tpl.get("font_italic", self.font_italic))
+        self.font_color = tpl.get("font_color", self.font_color)
         
         # 更新UI
         self.text_input.setText(self.watermark_text)
@@ -634,6 +655,9 @@ class WatermarkApp(QMainWindow):
             self.font_bold_check.setChecked(bool(self.font_bold))
         if hasattr(self, "font_italic_check"):
             self.font_italic_check.setChecked(bool(self.font_italic))
+        # 更新颜色预览按钮
+        if hasattr(self, "font_color_preview"):
+            self.font_color_preview.setStyleSheet(f"background:{self.font_color}; border:1px solid #888;")
         # 更新缩放 UI
         if hasattr(self, "resize_mode_combo"):
             reverse_map = {
@@ -685,6 +709,7 @@ class WatermarkApp(QMainWindow):
             "font_size": self.font_size_user,
             "font_bold": self.font_bold,
             "font_italic": self.font_italic,
+            "font_color": self.font_color,
             "templates": self.templates
         }
         
@@ -715,6 +740,7 @@ class WatermarkApp(QMainWindow):
                 self.font_size_user = int(settings.get("font_size", self.font_size_user))
                 self.font_bold = bool(settings.get("font_bold", self.font_bold))
                 self.font_italic = bool(settings.get("font_italic", self.font_italic))
+                self.font_color = settings.get("font_color", self.font_color)
                 
                 # 更新UI
                 self.text_input.setText(self.watermark_text)
@@ -755,6 +781,8 @@ class WatermarkApp(QMainWindow):
                     self.font_bold_check.setChecked(bool(self.font_bold))
                 if hasattr(self, "font_italic_check"):
                     self.font_italic_check.setChecked(bool(self.font_italic))
+                if hasattr(self, "font_color_preview"):
+                    self.font_color_preview.setStyleSheet(f"background:{self.font_color}; border:1px solid #888;")
                 # 更新缩放 UI
                 if hasattr(self, "resize_mode_combo"):
                     reverse_map = {

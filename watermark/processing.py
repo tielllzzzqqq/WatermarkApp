@@ -13,6 +13,7 @@ def apply_text_watermark(
     font_size_user: int,
     font_bold: bool,
     font_italic: bool,
+    font_color: Optional[str] = None,
 ) -> Image.Image:
     """Apply a text watermark to `img` and return a new image.
 
@@ -63,7 +64,21 @@ def apply_text_watermark(
     # Prepare layers
     watermark = Image.new('RGBA', img.size, (0, 0, 0, 0))
     opacity = int(255 * max(0, min(100, opacity_percent)) / 100.0)
-    fill_color = (0, 0, 0, opacity)
+
+    def _parse_hex_color(hex_str: Optional[str]) -> Tuple[int, int, int]:
+        h = (hex_str or "#000000").strip()
+        if h.startswith('#') and len(h) == 7:
+            try:
+                r = int(h[1:3], 16)
+                g = int(h[3:5], 16)
+                b = int(h[5:7], 16)
+                return r, g, b
+            except Exception:
+                pass
+        return 0, 0, 0
+
+    r, g, b = _parse_hex_color(font_color)
+    fill_color = (r, g, b, opacity)
 
     # Draw text to its own layer to simulate bold/italic
     text_layer = Image.new('RGBA', (text_width + 8, text_height + 8), (0, 0, 0, 0))

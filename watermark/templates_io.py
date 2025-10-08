@@ -49,5 +49,6 @@ def normalize_template_fields(tpl: Dict) -> Dict:
         "font_size": tpl.get("font_size", 0),
         "font_bold": tpl.get("font_bold", False),
         "font_italic": tpl.get("font_italic", False),
+        "font_color": tpl.get("font_color", "#000000"),
     }
     return fields
