@@ -43,6 +43,12 @@ try:
 except Exception as e:
     raise ImportError("未找到 Pillow，请先安装：pip install Pillow") from e
 
+# 抽离模块：字体、处理、导出、设置
+from watermark.fonts import scan_system_font_files, load_font
+from watermark.processing import apply_text_watermark
+from watermark.exporting import resize_image_proportionally, save_image
+from watermark.settings_io import read_settings, write_settings
+
 class WatermarkApp(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -73,7 +79,7 @@ class WatermarkApp(QMainWindow):
         self.font_size_user = 36  # 用户指定字号（像素），0 表示自动
         self.font_bold = False
         self.font_italic = False
-        self._available_fonts = self._scan_system_font_files()
+        self._available_fonts = scan_system_font_files()
         
         # 设置中心部件
         self.central_widget = QWidget()
@@ -547,154 +553,27 @@ class WatermarkApp(QMainWindow):
                 self.preview_label.setAlignment(Qt.AlignCenter)
     
     def apply_watermark(self, img):
-        """应用水印到图片"""
-        # 创建一个透明图层
-        watermark = Image.new('RGBA', img.size, (0, 0, 0, 0))
-        draw = ImageDraw.Draw(watermark)
-        
-        # 计算水印位置
-        width, height = img.size
-        
-        # 字体与字号：优先使用用户选择，否则自动
-        auto_size = int(min(width, height) / 15)
-        font_size = int(self.font_size_user) if int(self.font_size_user) > 0 else auto_size
-        font = None
-        if self.font_path:
-            try:
-                font = ImageFont.truetype(self.font_path, font_size)
-            except Exception:
-                font = None
-        if font is None:
-            font = self._load_font(font_size)
-        
-        # 获取文本大小
-        left, top, right, bottom = ImageDraw.Draw(Image.new('RGBA', (1,1))).textbbox((0, 0), self.watermark_text, font=font)
-        text_width = right - left
-        text_height = bottom - top
-        
-        # 根据选择的位置确定坐标
-        if self.watermark_position == "top-left":
-            position = (10, 10)
-        elif self.watermark_position == "top":
-            position = ((width - text_width) // 2, 10)
-        elif self.watermark_position == "top-right":
-            position = (width - text_width - 10, 10)
-        elif self.watermark_position == "left":
-            position = (10, (height - text_height) // 2)
-        elif self.watermark_position == "center":
-            position = ((width - text_width) // 2, (height - text_height) // 2)
-        elif self.watermark_position == "right":
-            position = (width - text_width - 10, (height - text_height) // 2)
-        elif self.watermark_position == "bottom-left":
-            position = (10, height - text_height - 10)
-        elif self.watermark_position == "bottom":
-            position = ((width - text_width) // 2, height - text_height - 10)
-        elif self.watermark_position == "bottom-right":
-            position = (width - text_width - 10, height - text_height - 10)
-        else:
-            # 自定义位置
-            position = (self.watermark_position_custom.x(), self.watermark_position_custom.y())
-        
-        # 绘制文本水印（支持粗体/斜体模拟）
-        opacity = int(255 * (self.watermark_opacity / 100))
-        fill_color = (0, 0, 0, opacity)
-
-        # 先在独立图层上绘制文本，便于斜体/粗体处理
-        text_layer = Image.new('RGBA', (text_width + 8, text_height + 8), (0, 0, 0, 0))
-        tdraw = ImageDraw.Draw(text_layer)
-        base_pos = (4, 4)
-        # 粗体：通过微小偏移叠加模拟
-        if self.font_bold:
-            tdraw.text(base_pos, self.watermark_text, font=font, fill=fill_color)
-            tdraw.text((base_pos[0] + 1, base_pos[1]), self.watermark_text, font=font, fill=fill_color)
-            tdraw.text((base_pos[0], base_pos[1] + 1), self.watermark_text, font=font, fill=fill_color)
-        else:
-            tdraw.text(base_pos, self.watermark_text, font=font, fill=fill_color)
-        # 斜体：应用轻微水平剪切
-        if self.font_italic:
-            skew = 0.25  # 倾斜因子（约 14 度）
-            w, h = text_layer.size
-            new_w = int(w + skew * h)
-            text_layer = text_layer.transform((new_w, h), Image.AFFINE, (1, skew, 0, 0, 1, 0), resample=Image.BICUBIC)
-        # 合成到水印图层
-        watermark.paste(text_layer, position, text_layer)
-        
-        # 将水印合并到原图
-        return Image.alpha_composite(img.convert("RGBA"), watermark)
+        """应用水印到图片（委托处理模块）"""
+        custom_point = (self.watermark_position_custom.x(), self.watermark_position_custom.y())
+        return apply_text_watermark(
+            img,
+            text=self.watermark_text,
+            position=self.watermark_position,
+            custom_point=custom_point,
+            opacity_percent=int(self.watermark_opacity),
+            font_path=self.font_path,
+            font_size_user=int(self.font_size_user),
+            font_bold=bool(self.font_bold),
+            font_italic=bool(self.font_italic),
+        )
 
     def _load_font(self, font_size):
-        """尽可能选择支持中文/Unicode 的字体，避免字符显示为方框。
-        在 macOS 上优先尝试系统字体；如果不可用则回退到默认字体。
-        """
-        # 优先尝试常见的 CJK 字体（按存在概率排序）
-        cjk_ttc_paths = [
-            "/System/Library/Fonts/PingFang.ttc",  # 苹果系统中文字体集合
-            "/System/Library/Fonts/Hiragino Sans GB.ttc",  # 冬青黑体简体中文
-            "/System/Library/Fonts/STHeiti Medium.ttc",  # 华文黑体（中）
-            "/System/Library/Fonts/STHeiti Light.ttc",   # 华文黑体（细）
-            "/System/Library/Fonts/Supplemental/Songti.ttc",  # 宋体
-        ]
-        for ttc in cjk_ttc_paths:
-            if os.path.exists(ttc):
-                # 尝试多个集合索引
-                for idx in range(0, 8):
-                    try:
-                        return ImageFont.truetype(ttc, font_size, index=idx)
-                    except Exception:
-                        continue
-        # 其他可选字体（若安装了）
-        other_candidates = [
-            "/Library/Fonts/NotoSansCJKsc-Regular.otf",
-            "/Library/Fonts/NotoSansCJK-Regular.ttc",
-            "/Library/Fonts/Arial Unicode.ttf",
-        ]
-        for path in other_candidates:
-            try:
-                if os.path.exists(path):
-                    return ImageFont.truetype(path, font_size)
-            except Exception:
-                continue
-        # 最后回退到 Arial 或默认字体
-        try:
-            return ImageFont.truetype("Arial", font_size)
-        except Exception:
-            return ImageFont.load_default()
+        """包装为外部统一的字体加载器（保留兼容调用）。"""
+        return load_font(font_size, self.font_path)
 
     def _scan_system_font_files(self):
-        """扫描系统字体目录，收集可用的字体文件路径用于选择。返回列表 [(显示名, 路径)]."""
-        fonts = []
-        search_dirs = [
-            "/System/Library/Fonts",
-            "/System/Library/Fonts/Supplemental",
-            "/Library/Fonts",
-            os.path.expanduser("~/Library/Fonts"),
-        ]
-        exts = {".ttf", ".otf", ".ttc"}
-        seen = set()
-        for d in search_dirs:
-            if not os.path.isdir(d):
-                continue
-            for name in os.listdir(d):
-                path = os.path.join(d, name)
-                if not os.path.isfile(path):
-                    continue
-                _, ext = os.path.splitext(name)
-                if ext.lower() in exts:
-                    disp = name
-                    if path not in seen:
-                        fonts.append((disp, path))
-                        seen.add(path)
-        # 简单排序，优先常见中文字体
-        def score(item):
-            n = item[0].lower()
-            s = 0
-            if "pingfang" in n or "songti" in n or "stheiti" in n or "hiragino" in n:
-                s -= 10
-            if "bold" in n:
-                s += 1
-            return s
-        fonts.sort(key=score)
-        return fonts
+        """包装为外部统一的字体扫描器（保留兼容调用）。"""
+        return scan_system_font_files()
 
     # ==== 字体设置事件处理 ====
     def on_font_selected(self, idx):
@@ -755,34 +634,21 @@ class WatermarkApp(QMainWindow):
                 # 打开原图并添加水印
                 img = Image.open(input_path)
                 watermarked_img = self.apply_watermark(img)
-                # 根据缩放模式调整输出尺寸（等比例）
-                try:
-                    ow, oh = watermarked_img.size
-                    tw, th = ow, oh
-                    if self.resize_mode == "width" and self.resize_width > 0 and ow > 0:
-                        tw = int(self.resize_width)
-                        scale = tw / float(ow)
-                        th = max(1, int(oh * scale))
-                    elif self.resize_mode == "height" and self.resize_height > 0 and oh > 0:
-                        th = int(self.resize_height)
-                        scale = th / float(oh)
-                        tw = max(1, int(ow * scale))
-                    elif self.resize_mode == "percent" and self.resize_percent > 0:
-                        scale = float(self.resize_percent) / 100.0
-                        tw = max(1, int(ow * scale))
-                        th = max(1, int(oh * scale))
-                    # 执行缩放（仅当尺寸变化时）
-                    if (tw, th) != (ow, oh):
-                        watermarked_img = watermarked_img.resize((tw, th), Image.LANCZOS)
-                except Exception as e:
-                    print(f"缩放处理失败，使用原尺寸导出: {e}")
-                
+                # 按导出缩放设置处理
+                watermarked_img = resize_image_proportionally(
+                    watermarked_img,
+                    mode=self.resize_mode,
+                    resize_width=int(self.resize_width),
+                    resize_height=int(self.resize_height),
+                    resize_percent=int(self.resize_percent),
+                )
                 # 保存图片
-                if self.output_format.lower() == "jpeg":
-                    watermarked_img = watermarked_img.convert("RGB")
-                    watermarked_img.save(output_path, "JPEG", quality=int(self.jpeg_quality))
-                else:
-                    watermarked_img.save(output_path, "PNG")
+                save_image(
+                    watermarked_img,
+                    output_format=self.output_format,
+                    jpeg_quality=int(self.jpeg_quality),
+                    output_path=output_path,
+                )
         
         QMessageBox.information(self, "成功", "图片导出完成")
     
@@ -896,8 +762,9 @@ class WatermarkApp(QMainWindow):
         img_y = int(y_in_pm / scale)
 
         # 以文本中心对齐更自然：需要计算文本尺寸
-        font_size = int(min(img_w, img_h) / 15) if min(img_w, img_h) > 0 else 20
-        font = self._load_font(font_size)
+        auto_size = int(min(img_w, img_h) / 15) if min(img_w, img_h) > 0 else 20
+        font_size = int(self.font_size_user) if int(self.font_size_user) > 0 else auto_size
+        font = load_font(font_size, self.font_path)
         # 创建一个临时画布以计算文本边界
         temp_img = Image.new('RGBA', (img_w, img_h), (0, 0, 0, 0))
         temp_draw = ImageDraw.Draw(temp_img)
@@ -1056,20 +923,15 @@ class WatermarkApp(QMainWindow):
         }
         
         try:
-            os.makedirs(os.path.expanduser("~/.watermark_app"), exist_ok=True)
-            with open(os.path.expanduser("~/.watermark_app/settings.json"), "w") as f:
-                json.dump(settings, f)
+            write_settings(settings)
         except Exception as e:
             print(f"保存设置失败: {e}")
     
     def load_settings(self):
         """加载设置"""
         try:
-            settings_path = os.path.expanduser("~/.watermark_app/settings.json")
-            if os.path.exists(settings_path):
-                with open(settings_path, "r") as f:
-                    settings = json.load(f)
-                
+            settings = read_settings()
+            if settings:
                 self.watermark_text = settings.get("watermark_text", self.watermark_text)
                 self.watermark_opacity = settings.get("watermark_opacity", self.watermark_opacity)
                 self.watermark_position = settings.get("watermark_position", self.watermark_position)
