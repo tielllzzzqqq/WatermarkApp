@@ -53,6 +53,7 @@ from watermark.media import is_supported_image, scan_directory_for_images, make_
 from watermark.preview import pil_to_qimage
 from ui.preview_basic import PreviewBasicUI
 from ui.font_settings import FontSettingsUI
+from ui.position_grid import PositionGridUI
 
 class WatermarkApp(QMainWindow):
     def __init__(self):
@@ -146,25 +147,9 @@ class WatermarkApp(QMainWindow):
         _fs = FontSettingsUI(self)
         settings_layout.addWidget(_fs.group)
         
-        # 位置设置
-        position_group = QGroupBox("水印位置")
-        position_layout = QGridLayout(position_group)
-        
-        # 九宫格位置选择
-        positions = [
-            ("左上", "top-left"), ("顶部", "top"), ("右上", "top-right"),
-            ("左侧", "left"), ("中心", "center"), ("右侧", "right"),
-            ("左下", "bottom-left"), ("底部", "bottom"), ("右下", "bottom-right")
-        ]
-        
-        for i, (label, pos) in enumerate(positions):
-            btn = QPushButton(label)
-            btn.setProperty("position", pos)
-            btn.clicked.connect(self.on_position_selected)
-            btn.setMinimumSize(84, 32)
-            position_layout.addWidget(btn, i // 3, i % 3)
-            
-        settings_layout.addWidget(position_group)
+        # 位置设置（子组件）
+        _pg = PositionGridUI(self)
+        settings_layout.addWidget(_pg.group)
 
         # 无需手动拖拽开关，拖拽默认可用
         
