@@ -68,6 +68,12 @@ class WatermarkApp(QMainWindow):
         self.resize_width = 1920
         self.resize_height = 1080
         self.resize_percent = 100
+        # 文本水印字体设置（高级）
+        self.font_path = None  # 选中的字体文件路径（ttf/otf/ttc）
+        self.font_size_user = 36  # 用户指定字号（像素），0 表示自动
+        self.font_bold = False
+        self.font_italic = False
+        self._available_fonts = self._scan_system_font_files()
         
         # 设置中心部件
         self.central_widget = QWidget()
@@ -199,6 +205,35 @@ class WatermarkApp(QMainWindow):
         opacity_layout.addWidget(self.opacity_slider)
         opacity_layout.addWidget(self.opacity_value_label)
         settings_layout.addLayout(opacity_layout)
+        
+        # 字体设置（高级）
+        font_group = QGroupBox("字体设置（可选）")
+        font_layout = QGridLayout(font_group)
+        # 字体选择
+        font_layout.addWidget(QLabel("字体:"), 0, 0)
+        self.font_combo = QComboBox()
+        self.font_combo.addItem("自动选择（推荐）", userData=None)
+        for name, path in self._available_fonts:
+            self.font_combo.addItem(name, userData=path)
+        self.font_combo.currentIndexChanged.connect(self.on_font_selected)
+        font_layout.addWidget(self.font_combo, 0, 1)
+        # 字号
+        font_layout.addWidget(QLabel("字号:"), 1, 0)
+        self.font_size_spin = QSpinBox()
+        self.font_size_spin.setRange(8, 512)
+        self.font_size_spin.setValue(self.font_size_user)
+        self.font_size_spin.valueChanged.connect(self.on_font_size_changed)
+        font_layout.addWidget(self.font_size_spin, 1, 1)
+        # 粗体 / 斜体
+        self.font_bold_check = QCheckBox("粗体")
+        self.font_bold_check.setChecked(self.font_bold)
+        self.font_bold_check.stateChanged.connect(self.on_font_bold_changed)
+        font_layout.addWidget(self.font_bold_check, 2, 0)
+        self.font_italic_check = QCheckBox("斜体")
+        self.font_italic_check.setChecked(self.font_italic)
+        self.font_italic_check.stateChanged.connect(self.on_font_italic_changed)
+        font_layout.addWidget(self.font_italic_check, 2, 1)
+        settings_layout.addWidget(font_group)
         
         # 位置设置
         position_group = QGroupBox("水印位置")
@@ -520,12 +555,20 @@ class WatermarkApp(QMainWindow):
         # 计算水印位置
         width, height = img.size
         
-        # 使用更健壮的字体加载，支持中文/Unicode 字符
-        font_size = int(min(width, height) / 15)  # 根据图片大小调整字体大小
-        font = self._load_font(font_size)
+        # 字体与字号：优先使用用户选择，否则自动
+        auto_size = int(min(width, height) / 15)
+        font_size = int(self.font_size_user) if int(self.font_size_user) > 0 else auto_size
+        font = None
+        if self.font_path:
+            try:
+                font = ImageFont.truetype(self.font_path, font_size)
+            except Exception:
+                font = None
+        if font is None:
+            font = self._load_font(font_size)
         
         # 获取文本大小
-        left, top, right, bottom = draw.textbbox((0, 0), self.watermark_text, font=font)
+        left, top, right, bottom = ImageDraw.Draw(Image.new('RGBA', (1,1))).textbbox((0, 0), self.watermark_text, font=font)
         text_width = right - left
         text_height = bottom - top
         
@@ -552,9 +595,29 @@ class WatermarkApp(QMainWindow):
             # 自定义位置
             position = (self.watermark_position_custom.x(), self.watermark_position_custom.y())
         
-        # 绘制文本水印
+        # 绘制文本水印（支持粗体/斜体模拟）
         opacity = int(255 * (self.watermark_opacity / 100))
-        draw.text(position, self.watermark_text, fill=(0, 0, 0, opacity), font=font)
+        fill_color = (0, 0, 0, opacity)
+
+        # 先在独立图层上绘制文本，便于斜体/粗体处理
+        text_layer = Image.new('RGBA', (text_width + 8, text_height + 8), (0, 0, 0, 0))
+        tdraw = ImageDraw.Draw(text_layer)
+        base_pos = (4, 4)
+        # 粗体：通过微小偏移叠加模拟
+        if self.font_bold:
+            tdraw.text(base_pos, self.watermark_text, font=font, fill=fill_color)
+            tdraw.text((base_pos[0] + 1, base_pos[1]), self.watermark_text, font=font, fill=fill_color)
+            tdraw.text((base_pos[0], base_pos[1] + 1), self.watermark_text, font=font, fill=fill_color)
+        else:
+            tdraw.text(base_pos, self.watermark_text, font=font, fill=fill_color)
+        # 斜体：应用轻微水平剪切
+        if self.font_italic:
+            skew = 0.25  # 倾斜因子（约 14 度）
+            w, h = text_layer.size
+            new_w = int(w + skew * h)
+            text_layer = text_layer.transform((new_w, h), Image.AFFINE, (1, skew, 0, 0, 1, 0), resample=Image.BICUBIC)
+        # 合成到水印图层
+        watermark.paste(text_layer, position, text_layer)
         
         # 将水印合并到原图
         return Image.alpha_composite(img.convert("RGBA"), watermark)
@@ -596,6 +659,59 @@ class WatermarkApp(QMainWindow):
             return ImageFont.truetype("Arial", font_size)
         except Exception:
             return ImageFont.load_default()
+
+    def _scan_system_font_files(self):
+        """扫描系统字体目录，收集可用的字体文件路径用于选择。返回列表 [(显示名, 路径)]."""
+        fonts = []
+        search_dirs = [
+            "/System/Library/Fonts",
+            "/System/Library/Fonts/Supplemental",
+            "/Library/Fonts",
+            os.path.expanduser("~/Library/Fonts"),
+        ]
+        exts = {".ttf", ".otf", ".ttc"}
+        seen = set()
+        for d in search_dirs:
+            if not os.path.isdir(d):
+                continue
+            for name in os.listdir(d):
+                path = os.path.join(d, name)
+                if not os.path.isfile(path):
+                    continue
+                _, ext = os.path.splitext(name)
+                if ext.lower() in exts:
+                    disp = name
+                    if path not in seen:
+                        fonts.append((disp, path))
+                        seen.add(path)
+        # 简单排序，优先常见中文字体
+        def score(item):
+            n = item[0].lower()
+            s = 0
+            if "pingfang" in n or "songti" in n or "stheiti" in n or "hiragino" in n:
+                s -= 10
+            if "bold" in n:
+                s += 1
+            return s
+        fonts.sort(key=score)
+        return fonts
+
+    # ==== 字体设置事件处理 ====
+    def on_font_selected(self, idx):
+        self.font_path = self.font_combo.itemData(idx)
+        self.update_preview()
+
+    def on_font_size_changed(self, val):
+        self.font_size_user = int(val)
+        self.update_preview()
+
+    def on_font_bold_changed(self, state):
+        self.font_bold = (state == Qt.Checked)
+        self.update_preview()
+
+    def on_font_italic_changed(self, state):
+        self.font_italic = (state == Qt.Checked)
+        self.update_preview()
     
     def export_images(self, all_images=False):
         """导出图片"""
@@ -814,7 +930,11 @@ class WatermarkApp(QMainWindow):
                 ,"resize_mode": self.resize_mode,
                 "resize_width": self.resize_width,
                 "resize_height": self.resize_height,
-                "resize_percent": self.resize_percent
+                "resize_percent": self.resize_percent,
+                "font_path": self.font_path,
+                "font_size": self.font_size_user,
+                "font_bold": self.font_bold,
+                "font_italic": self.font_italic
             }
             
             self.templates.append(template)
@@ -850,6 +970,10 @@ class WatermarkApp(QMainWindow):
         self.resize_width = template.get("resize_width", self.resize_width)
         self.resize_height = template.get("resize_height", self.resize_height)
         self.resize_percent = template.get("resize_percent", self.resize_percent)
+        self.font_path = template.get("font_path", self.font_path)
+        self.font_size_user = int(template.get("font_size", self.font_size_user))
+        self.font_bold = bool(template.get("font_bold", self.font_bold))
+        self.font_italic = bool(template.get("font_italic", self.font_italic))
         
         # 更新UI
         self.text_input.setText(self.watermark_text)
@@ -863,6 +987,20 @@ class WatermarkApp(QMainWindow):
         if hasattr(self, "jpeg_quality_slider"):
             self.jpeg_quality_slider.setValue(int(self.jpeg_quality))
             self.jpeg_quality_value_label.setText(f"{int(self.jpeg_quality)}")
+        # 更新字体 UI
+        if hasattr(self, "font_combo"):
+            if self.font_path:
+                idx = self.font_combo.findData(self.font_path)
+                if idx >= 0:
+                    self.font_combo.setCurrentIndex(idx)
+            else:
+                self.font_combo.setCurrentIndex(0)
+        if hasattr(self, "font_size_spin"):
+            self.font_size_spin.setValue(int(self.font_size_user))
+        if hasattr(self, "font_bold_check"):
+            self.font_bold_check.setChecked(bool(self.font_bold))
+        if hasattr(self, "font_italic_check"):
+            self.font_italic_check.setChecked(bool(self.font_italic))
         # 更新缩放 UI
         if hasattr(self, "resize_mode_combo"):
             reverse_map = {
@@ -910,6 +1048,10 @@ class WatermarkApp(QMainWindow):
             "resize_width": self.resize_width,
             "resize_height": self.resize_height,
             "resize_percent": self.resize_percent,
+            "font_path": self.font_path,
+            "font_size": self.font_size_user,
+            "font_bold": self.font_bold,
+            "font_italic": self.font_italic,
             "templates": self.templates
         }
         
@@ -941,6 +1083,10 @@ class WatermarkApp(QMainWindow):
                 self.resize_width = settings.get("resize_width", self.resize_width)
                 self.resize_height = settings.get("resize_height", self.resize_height)
                 self.resize_percent = settings.get("resize_percent", self.resize_percent)
+                self.font_path = settings.get("font_path", self.font_path)
+                self.font_size_user = int(settings.get("font_size", self.font_size_user))
+                self.font_bold = bool(settings.get("font_bold", self.font_bold))
+                self.font_italic = bool(settings.get("font_italic", self.font_italic))
                 
                 # 更新UI
                 self.text_input.setText(self.watermark_text)
@@ -967,6 +1113,20 @@ class WatermarkApp(QMainWindow):
                     self.jpeg_quality_slider.setValue(int(self.jpeg_quality))
                 if hasattr(self, "jpeg_quality_value_label"):
                     self.jpeg_quality_value_label.setText(f"{int(self.jpeg_quality)}")
+                # 更新字体 UI
+                if hasattr(self, "font_combo"):
+                    if self.font_path:
+                        idx = self.font_combo.findData(self.font_path)
+                        if idx >= 0:
+                            self.font_combo.setCurrentIndex(idx)
+                    else:
+                        self.font_combo.setCurrentIndex(0)
+                if hasattr(self, "font_size_spin"):
+                    self.font_size_spin.setValue(int(self.font_size_user))
+                if hasattr(self, "font_bold_check"):
+                    self.font_bold_check.setChecked(bool(self.font_bold))
+                if hasattr(self, "font_italic_check"):
+                    self.font_italic_check.setChecked(bool(self.font_italic))
                 # 更新缩放 UI
                 if hasattr(self, "resize_mode_combo"):
                     reverse_map = {
