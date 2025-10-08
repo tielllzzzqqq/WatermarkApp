@@ -8,7 +8,7 @@ import json
 try:
     from PyQt5.QtWidgets import (
         QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-        QFileDialog, QListWidget, QListWidgetItem, QSlider, QComboBox, QLineEdit,
+        QFileDialog, QListWidget, QListWidgetItem, QSlider, QComboBox, QLineEdit, QSpinBox,
         QGroupBox, QRadioButton, QCheckBox, QMessageBox, QSplitter, QFrame,
         QGridLayout, QInputDialog, QScrollArea, QSizePolicy, QAbstractItemView
     )
@@ -23,7 +23,7 @@ except Exception:
     try:
         from PySide6.QtWidgets import (
             QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-            QFileDialog, QListWidget, QListWidgetItem, QSlider, QComboBox, QLineEdit,
+            QFileDialog, QListWidget, QListWidgetItem, QSlider, QComboBox, QLineEdit, QSpinBox,
             QGroupBox, QRadioButton, QCheckBox, QMessageBox, QSplitter, QFrame,
             QGridLayout, QInputDialog, QScrollArea, QSizePolicy, QAbstractItemView
         )
@@ -63,6 +63,11 @@ class WatermarkApp(QMainWindow):
         self.templates = []  # 存储水印模板
         self._last_image_size = None  # 最近一次预览的原图尺寸 (w, h)
         self.jpeg_quality = 85  # JPEG 质量默认值 (0-100)
+        # 导出缩放设置
+        self.resize_mode = "none"  # none|width|height|percent
+        self.resize_width = 1920
+        self.resize_height = 1080
+        self.resize_percent = 100
         
         # 设置中心部件
         self.central_widget = QWidget()
@@ -244,6 +249,52 @@ class WatermarkApp(QMainWindow):
         output_layout.addWidget(self.jpeg_quality_container)
         # 初始显隐
         self.jpeg_quality_container.setVisible(self.output_format.lower() == "jpeg")
+
+        # 导出缩放设置
+        self.resize_container = QGroupBox("导出缩放")
+        resize_v = QVBoxLayout(self.resize_container)
+        # 模式选择
+        resize_mode_layout = QHBoxLayout()
+        resize_mode_layout.addWidget(QLabel("缩放模式:"))
+        self.resize_mode_combo = QComboBox()
+        self.resize_mode_combo.addItems(["不缩放", "按宽度", "按高度", "按百分比"])
+        self.resize_mode_combo.currentTextChanged.connect(self.on_resize_mode_changed)
+        resize_mode_layout.addWidget(self.resize_mode_combo)
+        resize_v.addLayout(resize_mode_layout)
+        # 宽度输入
+        self.resize_width_row = QWidget()
+        rw_layout = QHBoxLayout(self.resize_width_row)
+        rw_layout.addWidget(QLabel("目标宽度:"))
+        self.resize_width_spin = QSpinBox()
+        self.resize_width_spin.setRange(1, 10000)
+        self.resize_width_spin.setValue(self.resize_width)
+        self.resize_width_spin.valueChanged.connect(self.on_resize_width_changed)
+        rw_layout.addWidget(self.resize_width_spin)
+        resize_v.addWidget(self.resize_width_row)
+        # 高度输入
+        self.resize_height_row = QWidget()
+        rh_layout = QHBoxLayout(self.resize_height_row)
+        rh_layout.addWidget(QLabel("目标高度:"))
+        self.resize_height_spin = QSpinBox()
+        self.resize_height_spin.setRange(1, 10000)
+        self.resize_height_spin.setValue(self.resize_height)
+        self.resize_height_spin.valueChanged.connect(self.on_resize_height_changed)
+        rh_layout.addWidget(self.resize_height_spin)
+        resize_v.addWidget(self.resize_height_row)
+        # 百分比输入
+        self.resize_percent_row = QWidget()
+        rp_layout = QHBoxLayout(self.resize_percent_row)
+        rp_layout.addWidget(QLabel("缩放百分比:"))
+        self.resize_percent_spin = QSpinBox()
+        self.resize_percent_spin.setRange(1, 500)
+        self.resize_percent_spin.setSuffix(" %")
+        self.resize_percent_spin.setValue(self.resize_percent)
+        self.resize_percent_spin.valueChanged.connect(self.on_resize_percent_changed)
+        rp_layout.addWidget(self.resize_percent_spin)
+        resize_v.addWidget(self.resize_percent_row)
+        output_layout.addWidget(self.resize_container)
+        # 初始显隐
+        self._update_resize_rows_visibility()
         
         # 命名规则
         naming_layout = QVBoxLayout()
@@ -588,6 +639,27 @@ class WatermarkApp(QMainWindow):
                 # 打开原图并添加水印
                 img = Image.open(input_path)
                 watermarked_img = self.apply_watermark(img)
+                # 根据缩放模式调整输出尺寸（等比例）
+                try:
+                    ow, oh = watermarked_img.size
+                    tw, th = ow, oh
+                    if self.resize_mode == "width" and self.resize_width > 0 and ow > 0:
+                        tw = int(self.resize_width)
+                        scale = tw / float(ow)
+                        th = max(1, int(oh * scale))
+                    elif self.resize_mode == "height" and self.resize_height > 0 and oh > 0:
+                        th = int(self.resize_height)
+                        scale = th / float(oh)
+                        tw = max(1, int(ow * scale))
+                    elif self.resize_mode == "percent" and self.resize_percent > 0:
+                        scale = float(self.resize_percent) / 100.0
+                        tw = max(1, int(ow * scale))
+                        th = max(1, int(oh * scale))
+                    # 执行缩放（仅当尺寸变化时）
+                    if (tw, th) != (ow, oh):
+                        watermarked_img = watermarked_img.resize((tw, th), Image.LANCZOS)
+                except Exception as e:
+                    print(f"缩放处理失败，使用原尺寸导出: {e}")
                 
                 # 保存图片
                 if self.output_format.lower() == "jpeg":
@@ -623,12 +695,42 @@ class WatermarkApp(QMainWindow):
         # 切换 JPEG 时显示质量控制
         if hasattr(self, "jpeg_quality_container"):
             self.jpeg_quality_container.setVisible(self.output_format == "jpeg")
+        # 缩放行显隐保持与模式一致
+        self._update_resize_rows_visibility()
 
     def on_jpeg_quality_changed(self, value):
         """JPEG 质量变更"""
         self.jpeg_quality = int(value)
         if hasattr(self, "jpeg_quality_value_label"):
             self.jpeg_quality_value_label.setText(f"{self.jpeg_quality}")
+
+    def on_resize_mode_changed(self, text):
+        mapping = {
+            "不缩放": "none",
+            "按宽度": "width",
+            "按高度": "height",
+            "按百分比": "percent",
+        }
+        self.resize_mode = mapping.get(text, "none")
+        self._update_resize_rows_visibility()
+
+    def on_resize_width_changed(self, value):
+        self.resize_width = int(value)
+
+    def on_resize_height_changed(self, value):
+        self.resize_height = int(value)
+
+    def on_resize_percent_changed(self, value):
+        self.resize_percent = int(value)
+
+    def _update_resize_rows_visibility(self):
+        mode = getattr(self, "resize_mode", "none")
+        if hasattr(self, "resize_width_row"):
+            self.resize_width_row.setVisible(mode == "width")
+        if hasattr(self, "resize_height_row"):
+            self.resize_height_row.setVisible(mode == "height")
+        if hasattr(self, "resize_percent_row"):
+            self.resize_percent_row.setVisible(mode == "percent")
     
     def on_naming_rule_changed(self, rule):
         """命名规则变更"""
@@ -709,6 +811,10 @@ class WatermarkApp(QMainWindow):
                 "prefix": self.output_prefix,
                 "suffix": self.output_suffix,
                 "jpeg_quality": self.jpeg_quality
+                ,"resize_mode": self.resize_mode,
+                "resize_width": self.resize_width,
+                "resize_height": self.resize_height,
+                "resize_percent": self.resize_percent
             }
             
             self.templates.append(template)
@@ -740,6 +846,10 @@ class WatermarkApp(QMainWindow):
         self.output_prefix = template["prefix"]
         self.output_suffix = template["suffix"]
         self.jpeg_quality = template.get("jpeg_quality", self.jpeg_quality)
+        self.resize_mode = template.get("resize_mode", self.resize_mode)
+        self.resize_width = template.get("resize_width", self.resize_width)
+        self.resize_height = template.get("resize_height", self.resize_height)
+        self.resize_percent = template.get("resize_percent", self.resize_percent)
         
         # 更新UI
         self.text_input.setText(self.watermark_text)
@@ -753,6 +863,25 @@ class WatermarkApp(QMainWindow):
         if hasattr(self, "jpeg_quality_slider"):
             self.jpeg_quality_slider.setValue(int(self.jpeg_quality))
             self.jpeg_quality_value_label.setText(f"{int(self.jpeg_quality)}")
+        # 更新缩放 UI
+        if hasattr(self, "resize_mode_combo"):
+            reverse_map = {
+                "none": "不缩放",
+                "width": "按宽度",
+                "height": "按高度",
+                "percent": "按百分比",
+            }
+            text = reverse_map.get(self.resize_mode, "不缩放")
+            idx = self.resize_mode_combo.findText(text)
+            if idx >= 0:
+                self.resize_mode_combo.setCurrentIndex(idx)
+        if hasattr(self, "resize_width_spin"):
+            self.resize_width_spin.setValue(int(self.resize_width))
+        if hasattr(self, "resize_height_spin"):
+            self.resize_height_spin.setValue(int(self.resize_height))
+        if hasattr(self, "resize_percent_spin"):
+            self.resize_percent_spin.setValue(int(self.resize_percent))
+        self._update_resize_rows_visibility()
         
         if self.output_naming == "prefix":
             self.naming_prefix_radio.setChecked(True)
@@ -777,6 +906,10 @@ class WatermarkApp(QMainWindow):
             "output_prefix": self.output_prefix,
             "output_suffix": self.output_suffix,
             "jpeg_quality": self.jpeg_quality,
+            "resize_mode": self.resize_mode,
+            "resize_width": self.resize_width,
+            "resize_height": self.resize_height,
+            "resize_percent": self.resize_percent,
             "templates": self.templates
         }
         
@@ -804,6 +937,10 @@ class WatermarkApp(QMainWindow):
                 self.output_suffix = settings.get("output_suffix", self.output_suffix)
                 self.templates = settings.get("templates", [])
                 self.jpeg_quality = settings.get("jpeg_quality", self.jpeg_quality)
+                self.resize_mode = settings.get("resize_mode", self.resize_mode)
+                self.resize_width = settings.get("resize_width", self.resize_width)
+                self.resize_height = settings.get("resize_height", self.resize_height)
+                self.resize_percent = settings.get("resize_percent", self.resize_percent)
                 
                 # 更新UI
                 self.text_input.setText(self.watermark_text)
@@ -830,6 +967,25 @@ class WatermarkApp(QMainWindow):
                     self.jpeg_quality_slider.setValue(int(self.jpeg_quality))
                 if hasattr(self, "jpeg_quality_value_label"):
                     self.jpeg_quality_value_label.setText(f"{int(self.jpeg_quality)}")
+                # 更新缩放 UI
+                if hasattr(self, "resize_mode_combo"):
+                    reverse_map = {
+                        "none": "不缩放",
+                        "width": "按宽度",
+                        "height": "按高度",
+                        "percent": "按百分比",
+                    }
+                    text = reverse_map.get(self.resize_mode, "不缩放")
+                    idx = self.resize_mode_combo.findText(text)
+                    if idx >= 0:
+                        self.resize_mode_combo.setCurrentIndex(idx)
+                if hasattr(self, "resize_width_spin"):
+                    self.resize_width_spin.setValue(int(self.resize_width))
+                if hasattr(self, "resize_height_spin"):
+                    self.resize_height_spin.setValue(int(self.resize_height))
+                if hasattr(self, "resize_percent_spin"):
+                    self.resize_percent_spin.setValue(int(self.resize_percent))
+                self._update_resize_rows_visibility()
         except Exception as e:
             print(f"加载设置失败: {e}")
     
