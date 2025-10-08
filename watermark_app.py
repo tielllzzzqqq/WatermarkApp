@@ -87,6 +87,14 @@ class WatermarkApp(QMainWindow):
         self.font_bold = False
         self.font_italic = False
         self.font_color = "#000000"  # 文本颜色（默认黑色，#RRGGBB）
+        # 字体高级样式与高清渲染
+        self.font_stroke_width = 0
+        self.font_stroke_color = "#000000"
+        self.font_shadow_enabled = False
+        self.font_shadow_offset_x = 2
+        self.font_shadow_offset_y = 2
+        self.font_shadow_color = "#000000"
+        self.render_scale = 1
         self._available_fonts = scan_system_font_files()
         
         # 设置中心部件
@@ -340,6 +348,12 @@ class WatermarkApp(QMainWindow):
             font_bold=bool(self.font_bold),
             font_italic=bool(self.font_italic),
             font_color=self.font_color,
+            stroke_width=int(getattr(self, "font_stroke_width", 0)),
+            stroke_color=getattr(self, "font_stroke_color", "#000000"),
+            shadow_enabled=bool(getattr(self, "font_shadow_enabled", False)),
+            shadow_offset=(int(getattr(self, "font_shadow_offset_x", 2)), int(getattr(self, "font_shadow_offset_y", 2))),
+            shadow_color=getattr(self, "font_shadow_color", "#000000"),
+            render_scale=int(getattr(self, "render_scale", 1)),
         )
 
     def _load_font(self, font_size):
@@ -382,6 +396,48 @@ class WatermarkApp(QMainWindow):
         # 更新预览按钮背景（如存在）
         if hasattr(self, "font_color_preview"):
             self.font_color_preview.setStyleSheet(f"background:{self.font_color}; border:1px solid #888;")
+        self.update_preview()
+
+    def on_font_stroke_width_changed(self, val):
+        self.font_stroke_width = int(val)
+        self.update_preview()
+
+    def on_font_stroke_color_changed(self, hex_color):
+        try:
+            val = str(hex_color).strip()
+            if isinstance(val, str) and len(val) == 7 and val.startswith('#'):
+                self.font_stroke_color = val
+        except Exception:
+            pass
+        if hasattr(self, "font_stroke_color_preview"):
+            self.font_stroke_color_preview.setStyleSheet(f"background:{self.font_stroke_color}; border:1px solid #888;")
+        self.update_preview()
+
+    def on_font_shadow_enabled_changed(self, state):
+        self.font_shadow_enabled = (state == Qt.Checked)
+        self.update_preview()
+
+    def on_font_shadow_offset_x_changed(self, val):
+        self.font_shadow_offset_x = int(val)
+        self.update_preview()
+
+    def on_font_shadow_offset_y_changed(self, val):
+        self.font_shadow_offset_y = int(val)
+        self.update_preview()
+
+    def on_font_shadow_color_changed(self, hex_color):
+        try:
+            val = str(hex_color).strip()
+            if isinstance(val, str) and len(val) == 7 and val.startswith('#'):
+                self.font_shadow_color = val
+        except Exception:
+            pass
+        if hasattr(self, "font_shadow_color_preview"):
+            self.font_shadow_color_preview.setStyleSheet(f"background:{self.font_shadow_color}; border:1px solid #888;")
+        self.update_preview()
+
+    def on_render_scale_changed(self, val):
+        self.render_scale = int(val)
         self.update_preview()
     
     def export_images(self, all_images=False):
@@ -588,6 +644,13 @@ class WatermarkApp(QMainWindow):
                 "font_bold": self.font_bold,
                 "font_italic": self.font_italic,
                 "font_color": self.font_color,
+                "font_stroke_width": self.font_stroke_width,
+                "font_stroke_color": self.font_stroke_color,
+                "font_shadow_enabled": self.font_shadow_enabled,
+                "font_shadow_offset_x": self.font_shadow_offset_x,
+                "font_shadow_offset_y": self.font_shadow_offset_y,
+                "font_shadow_color": self.font_shadow_color,
+                "render_scale": self.render_scale,
             }
             
             self.templates = add_or_update_template(self.templates, template)
@@ -628,6 +691,13 @@ class WatermarkApp(QMainWindow):
         self.font_bold = bool(tpl.get("font_bold", self.font_bold))
         self.font_italic = bool(tpl.get("font_italic", self.font_italic))
         self.font_color = tpl.get("font_color", self.font_color)
+        self.font_stroke_width = int(tpl.get("font_stroke_width", self.font_stroke_width))
+        self.font_stroke_color = tpl.get("font_stroke_color", self.font_stroke_color)
+        self.font_shadow_enabled = bool(tpl.get("font_shadow_enabled", self.font_shadow_enabled))
+        self.font_shadow_offset_x = int(tpl.get("font_shadow_offset_x", self.font_shadow_offset_x))
+        self.font_shadow_offset_y = int(tpl.get("font_shadow_offset_y", self.font_shadow_offset_y))
+        self.font_shadow_color = tpl.get("font_shadow_color", self.font_shadow_color)
+        self.render_scale = int(tpl.get("render_scale", self.render_scale))
         
         # 更新UI
         self.text_input.setText(self.watermark_text)
@@ -658,6 +728,18 @@ class WatermarkApp(QMainWindow):
         # 更新颜色预览按钮
         if hasattr(self, "font_color_preview"):
             self.font_color_preview.setStyleSheet(f"background:{self.font_color}; border:1px solid #888;")
+        if hasattr(self, "font_stroke_width_spin"):
+            self.font_stroke_width_spin.setValue(int(self.font_stroke_width))
+        if hasattr(self, "font_stroke_color_preview"):
+            self.font_stroke_color_preview.setStyleSheet(f"background:{self.font_stroke_color}; border:1px solid #888;")
+        if hasattr(self, "font_shadow_check"):
+            self.font_shadow_check.setChecked(bool(self.font_shadow_enabled))
+        if hasattr(self, "font_shadow_x_spin"):
+            self.font_shadow_x_spin.setValue(int(self.font_shadow_offset_x))
+        if hasattr(self, "font_shadow_y_spin"):
+            self.font_shadow_y_spin.setValue(int(self.font_shadow_offset_y))
+        if hasattr(self, "font_shadow_color_preview"):
+            self.font_shadow_color_preview.setStyleSheet(f"background:{self.font_shadow_color}; border:1px solid #888;")
         # 更新缩放 UI
         if hasattr(self, "resize_mode_combo"):
             reverse_map = {
@@ -710,6 +792,13 @@ class WatermarkApp(QMainWindow):
             "font_bold": self.font_bold,
             "font_italic": self.font_italic,
             "font_color": self.font_color,
+            "font_stroke_width": self.font_stroke_width,
+            "font_stroke_color": self.font_stroke_color,
+            "font_shadow_enabled": self.font_shadow_enabled,
+            "font_shadow_offset_x": self.font_shadow_offset_x,
+            "font_shadow_offset_y": self.font_shadow_offset_y,
+            "font_shadow_color": self.font_shadow_color,
+            "render_scale": self.render_scale,
             "templates": self.templates
         }
         
@@ -741,6 +830,14 @@ class WatermarkApp(QMainWindow):
                 self.font_bold = bool(settings.get("font_bold", self.font_bold))
                 self.font_italic = bool(settings.get("font_italic", self.font_italic))
                 self.font_color = settings.get("font_color", self.font_color)
+                # 新增：描边、阴影、高清渲染
+                self.font_stroke_width = int(settings.get("font_stroke_width", self.font_stroke_width))
+                self.font_stroke_color = settings.get("font_stroke_color", self.font_stroke_color)
+                self.font_shadow_enabled = bool(settings.get("font_shadow_enabled", self.font_shadow_enabled))
+                self.font_shadow_offset_x = int(settings.get("font_shadow_offset_x", self.font_shadow_offset_x))
+                self.font_shadow_offset_y = int(settings.get("font_shadow_offset_y", self.font_shadow_offset_y))
+                self.font_shadow_color = settings.get("font_shadow_color", self.font_shadow_color)
+                self.render_scale = int(settings.get("render_scale", self.render_scale))
                 
                 # 更新UI
                 self.text_input.setText(self.watermark_text)
@@ -783,6 +880,21 @@ class WatermarkApp(QMainWindow):
                     self.font_italic_check.setChecked(bool(self.font_italic))
                 if hasattr(self, "font_color_preview"):
                     self.font_color_preview.setStyleSheet(f"background:{self.font_color}; border:1px solid #888;")
+                # 新增：高级样式 UI 同步
+                if hasattr(self, "font_stroke_width_spin"):
+                    self.font_stroke_width_spin.setValue(int(self.font_stroke_width))
+                if hasattr(self, "font_stroke_color_preview"):
+                    self.font_stroke_color_preview.setStyleSheet(f"background:{self.font_stroke_color}; border:1px solid #888;")
+                if hasattr(self, "font_shadow_check"):
+                    self.font_shadow_check.setChecked(bool(self.font_shadow_enabled))
+                if hasattr(self, "font_shadow_x_spin"):
+                    self.font_shadow_x_spin.setValue(int(self.font_shadow_offset_x))
+                if hasattr(self, "font_shadow_y_spin"):
+                    self.font_shadow_y_spin.setValue(int(self.font_shadow_offset_y))
+                if hasattr(self, "font_shadow_color_preview"):
+                    self.font_shadow_color_preview.setStyleSheet(f"background:{self.font_shadow_color}; border:1px solid #888;")
+                if hasattr(self, "render_scale_spin"):
+                    self.render_scale_spin.setValue(int(self.render_scale))
                 # 更新缩放 UI
                 if hasattr(self, "resize_mode_combo"):
                     reverse_map = {
@@ -802,6 +914,8 @@ class WatermarkApp(QMainWindow):
                 if hasattr(self, "resize_percent_spin"):
                     self.resize_percent_spin.setValue(int(self.resize_percent))
                 self._update_resize_rows_visibility()
+                # 刷新预览
+                self.update_preview()
         except Exception as e:
             print(f"加载设置失败: {e}")
     

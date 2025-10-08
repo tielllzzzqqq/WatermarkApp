@@ -1,5 +1,5 @@
 from typing import Tuple, Optional
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFilter
 from .fonts import load_font
 
 
@@ -14,6 +14,12 @@ def apply_text_watermark(
     font_bold: bool,
     font_italic: bool,
     font_color: Optional[str] = None,
+    stroke_width: int = 0,
+    stroke_color: Optional[str] = None,
+    shadow_enabled: bool = False,
+    shadow_offset: Tuple[int, int] = (2, 2),
+    shadow_color: Optional[str] = None,
+    render_scale: int = 1,
 ) -> Image.Image:
     """Apply a text watermark to `img` and return a new image.
 
@@ -27,12 +33,16 @@ def apply_text_watermark(
     # Determine font size and load font
     auto_size = int(min(width, height) / 15) if min(width, height) > 0 else 20
     font_size = int(font_size_user) if int(font_size_user) > 0 else auto_size
-    font = load_font(font_size, font_path)
+    scale = max(1, int(render_scale))
+    font = load_font(font_size * scale, font_path)
 
-    # Measure text size
+    # Measure text size at high-res
     left, top, right, bottom = ImageDraw.Draw(Image.new('RGBA', (1, 1))).textbbox((0, 0), text, font=font)
-    text_width = max(0, right - left)
-    text_height = max(0, bottom - top)
+    text_width_hr = max(0, right - left)
+    text_height_hr = max(0, bottom - top)
+    # Final low-res size after downscale
+    text_width = max(1, text_width_hr // scale)
+    text_height = max(1, text_height_hr // scale)
 
     # Resolve position
     if position == "top-left":
@@ -79,24 +89,42 @@ def apply_text_watermark(
 
     r, g, b = _parse_hex_color(font_color)
     fill_color = (r, g, b, opacity)
+    sr, sg, sb = _parse_hex_color(stroke_color)
+    stroke_fill = (sr, sg, sb, opacity)
+    shr, shg, shb = _parse_hex_color(shadow_color)
+    shadow_fill = (shr, shg, shb, max(0, min(255, int(opacity * 0.5))))
 
     # Draw text to its own layer to simulate bold/italic
-    text_layer = Image.new('RGBA', (text_width + 8, text_height + 8), (0, 0, 0, 0))
-    tdraw = ImageDraw.Draw(text_layer)
-    base_pos = (4, 4)
+    # Create high-res layer and draw with optional stroke/shadow
+    text_layer_hr = Image.new('RGBA', (text_width_hr + 8 * scale, text_height_hr + 8 * scale), (0, 0, 0, 0))
+    tdraw = ImageDraw.Draw(text_layer_hr)
+    base_pos = (4 * scale, 4 * scale)
+    sw_scaled = max(0, int(stroke_width)) * scale
+    off_x = int(shadow_offset[0]) * scale
+    off_y = int(shadow_offset[1]) * scale
 
+    # Shadow first
+    if shadow_enabled:
+        tdraw.text((base_pos[0] + off_x, base_pos[1] + off_y), text, font=font, fill=shadow_fill, stroke_width=sw_scaled, stroke_fill=shadow_fill)
+
+    # Bold simulation at high-res
     if font_bold:
-        tdraw.text(base_pos, text, font=font, fill=fill_color)
-        tdraw.text((base_pos[0] + 1, base_pos[1]), text, font=font, fill=fill_color)
-        tdraw.text((base_pos[0], base_pos[1] + 1), text, font=font, fill=fill_color)
+        tdraw.text(base_pos, text, font=font, fill=fill_color, stroke_width=sw_scaled, stroke_fill=stroke_fill)
+        tdraw.text((base_pos[0] + 1 * scale, base_pos[1]), text, font=font, fill=fill_color, stroke_width=sw_scaled, stroke_fill=stroke_fill)
+        tdraw.text((base_pos[0], base_pos[1] + 1 * scale), text, font=font, fill=fill_color, stroke_width=sw_scaled, stroke_fill=stroke_fill)
     else:
-        tdraw.text(base_pos, text, font=font, fill=fill_color)
+        tdraw.text(base_pos, text, font=font, fill=fill_color, stroke_width=sw_scaled, stroke_fill=stroke_fill)
 
     if font_italic:
         skew = 0.25
-        w, h = text_layer.size
+        w, h = text_layer_hr.size
         new_w = int(w + skew * h)
-        text_layer = text_layer.transform((new_w, h), Image.AFFINE, (1, skew, 0, 0, 1, 0), resample=Image.BICUBIC)
+        text_layer_hr = text_layer_hr.transform((new_w, h), Image.AFFINE, (1, skew, 0, 0, 1, 0), resample=Image.BICUBIC)
+
+    # Downscale for high-definition edges
+    dest_w = max(1, text_layer_hr.size[0] // scale)
+    dest_h = max(1, text_layer_hr.size[1] // scale)
+    text_layer = text_layer_hr.resize((dest_w, dest_h), Image.LANCZOS)
 
     watermark.paste(text_layer, pos, text_layer)
     return Image.alpha_composite(img.convert("RGBA"), watermark)

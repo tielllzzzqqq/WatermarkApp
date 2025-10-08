@@ -94,6 +94,103 @@ class FontSettingsUI:
 
         layout.addWidget(color_row, 3, 1)
 
+        # 描边宽度
+        layout.addWidget(QLabel("描边宽度:"), 4, 0)
+        stroke_width_spin = QSpinBox()
+        stroke_width_spin.setRange(0, 10)
+        stroke_width_spin.setValue(int(getattr(host, "font_stroke_width", 0)))
+        stroke_width_spin.valueChanged.connect(host.on_font_stroke_width_changed)
+        layout.addWidget(stroke_width_spin, 4, 1)
+
+        # 描边颜色
+        layout.addWidget(QLabel("描边颜色:"), 5, 0)
+        stroke_color_row = QWidget()
+        stroke_color_layout = QHBoxLayout(stroke_color_row)
+        stroke_color_layout.setContentsMargins(0, 0, 0, 0)
+
+        stroke_preview_btn = QPushButton()
+        stroke_preview_btn.setFixedSize(32, 20)
+        def _hex_to_css2(hex_str: str) -> str:
+            h = (hex_str or "#000000").strip()
+            if len(h) == 7 and h.startswith('#'):
+                return h
+            return "#000000"
+        current_stroke_hex = str(getattr(host, "font_stroke_color", "#000000"))
+        stroke_preview_btn.setStyleSheet(f"background:{_hex_to_css2(current_stroke_hex)}; border:1px solid #888;")
+
+        def _choose_stroke_color():
+            c = QColorDialog.getColor()
+            if c and c.isValid():
+                hex_val = c.name()
+                stroke_preview_btn.setStyleSheet(f"background:{hex_val}; border:1px solid #888;")
+                host.on_font_stroke_color_changed(hex_val)
+        stroke_preview_btn.clicked.connect(_choose_stroke_color)
+        stroke_color_layout.addWidget(stroke_preview_btn)
+
+        stroke_preset_colors = [
+            "#000000", "#FFFFFF", "#FF0000", "#00FF00", "#0000FF",
+            "#FFFF00", "#00FFFF", "#FF00FF", "#808080"
+        ]
+        stroke_swatches = []
+        for hx in stroke_preset_colors:
+            b = QPushButton()
+            b.setFixedSize(20, 20)
+            b.setStyleSheet(f"background:{hx}; border:1px solid #666;")
+            b.clicked.connect(lambda _, h=hx: (stroke_preview_btn.setStyleSheet(f"background:{h}; border:1px solid #888;"), host.on_font_stroke_color_changed(h)))
+            stroke_color_layout.addWidget(b)
+            stroke_swatches.append(b)
+
+        layout.addWidget(stroke_color_row, 5, 1)
+
+        # 阴影设置
+        shadow_row = QWidget()
+        shadow_layout = QHBoxLayout(shadow_row)
+        shadow_layout.setContentsMargins(0, 0, 0, 0)
+        shadow_check = QCheckBox("启用阴影")
+        shadow_check.setChecked(bool(getattr(host, "font_shadow_enabled", False)))
+        shadow_check.stateChanged.connect(host.on_font_shadow_enabled_changed)
+        shadow_layout.addWidget(shadow_check)
+
+        shadow_layout.addWidget(QLabel("偏移X:"))
+        shadow_x_spin = QSpinBox()
+        shadow_x_spin.setRange(-20, 20)
+        shadow_x_spin.setValue(int(getattr(host, "font_shadow_offset_x", 2)))
+        shadow_x_spin.valueChanged.connect(host.on_font_shadow_offset_x_changed)
+        shadow_layout.addWidget(shadow_x_spin)
+
+        shadow_layout.addWidget(QLabel("偏移Y:"))
+        shadow_y_spin = QSpinBox()
+        shadow_y_spin.setRange(-20, 20)
+        shadow_y_spin.setValue(int(getattr(host, "font_shadow_offset_y", 2)))
+        shadow_y_spin.valueChanged.connect(host.on_font_shadow_offset_y_changed)
+        shadow_layout.addWidget(shadow_y_spin)
+
+        # 阴影颜色
+        shadow_preview_btn = QPushButton()
+        shadow_preview_btn.setFixedSize(32, 20)
+        current_shadow_hex = str(getattr(host, "font_shadow_color", "#000000"))
+        shadow_preview_btn.setStyleSheet(f"background:{_hex_to_css2(current_shadow_hex)}; border:1px solid #888;")
+        def _choose_shadow_color():
+            c = QColorDialog.getColor()
+            if c and c.isValid():
+                hex_val = c.name()
+                shadow_preview_btn.setStyleSheet(f"background:{hex_val}; border:1px solid #888;")
+                host.on_font_shadow_color_changed(hex_val)
+        shadow_preview_btn.clicked.connect(_choose_shadow_color)
+        shadow_layout.addWidget(QLabel("阴影颜色:"))
+        shadow_layout.addWidget(shadow_preview_btn)
+
+        layout.addWidget(QLabel("阴影:"), 6, 0)
+        layout.addWidget(shadow_row, 6, 1)
+
+        # 高清渲染（超采样）
+        layout.addWidget(QLabel("高清渲染倍数:"), 7, 0)
+        render_scale_spin = QSpinBox()
+        render_scale_spin.setRange(1, 4)
+        render_scale_spin.setValue(int(getattr(host, "render_scale", 1)))
+        render_scale_spin.valueChanged.connect(host.on_render_scale_changed)
+        layout.addWidget(render_scale_spin, 7, 1)
+
         # 引用回填
         host.font_combo = font_combo
         host.font_size_spin = font_size_spin
@@ -101,3 +198,12 @@ class FontSettingsUI:
         host.font_italic_check = font_italic_check
         host.font_color_preview = preview_btn
         host.font_color_swatches = swatches
+
+        host.font_stroke_width_spin = stroke_width_spin
+        host.font_stroke_color_preview = stroke_preview_btn
+        host.font_stroke_color_swatches = stroke_swatches
+        host.font_shadow_check = shadow_check
+        host.font_shadow_x_spin = shadow_x_spin
+        host.font_shadow_y_spin = shadow_y_spin
+        host.font_shadow_color_preview = shadow_preview_btn
+        host.render_scale_spin = render_scale_spin
