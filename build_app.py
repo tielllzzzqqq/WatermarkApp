@@ -131,35 +131,72 @@ def create_dmg():
         print("Error: 应用程序不存在，请先构建应用")
         return False
     
-    # 检查是否安装了create-dmg
+    # 优先使用 create-dmg；若不可用则回退到 hdiutil
+    create_dmg_available = False
     try:
-        subprocess.run(["create-dmg", "--version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
-    except FileNotFoundError:
-        print("Warning: 未找到create-dmg工具，跳过DMG创建")
-        print("提示: 可以通过Homebrew安装: brew install create-dmg")
-        return False
-    
-    # 创建DMG
+        subprocess.run(["create-dmg", "--version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+        create_dmg_available = True
+    except Exception:
+        create_dmg_available = False
+
     try:
-        subprocess.run([
-            "create-dmg",
-            "--volname", "WatermarkApp",
-            "--volicon", "resources/icon.icns" if Path("resources/icon.icns").exists() else "",
-            "--window-pos", "200", "100",
-            "--window-size", "800", "500",
-            "--icon-size", "100",
-            "--icon", "WatermarkApp.app", "200", "200",
-            "--hide-extension", "WatermarkApp.app",
-            "--app-drop-link", "600", "200",
-            "dist/WatermarkApp.dmg",
-            "dist/WatermarkApp.app"
-        ], check=True)
+        dmg_path = Path("dist/WatermarkApp.dmg")
+        # 若已有旧DMG，先删除避免冲突
+        if dmg_path.exists():
+            try:
+                dmg_path.unlink()
+            except Exception:
+                pass
+        if create_dmg_available:
+            print("使用 create-dmg 创建DMG...")
+            subprocess.run([
+                "create-dmg",
+                "--volname", "WatermarkApp",
+                "--volicon", "resources/icon.icns" if Path("resources/icon.icns").exists() else "",
+                "--window-pos", "200", "100",
+                "--window-size", "800", "500",
+                "--icon-size", "100",
+                "--icon", "WatermarkApp.app", "200", "200",
+                "--hide-extension", "WatermarkApp.app",
+                "--app-drop-link", "600", "200",
+                str(dmg_path),
+                str(app_path)
+            ], check=True)
+        else:
+            print("未找到 create-dmg，使用 hdiutil 创建压缩DMG...")
+            # hdiutil UDZO 压缩，简单直接
+            subprocess.run([
+                "hdiutil", "create",
+                "-volname", "WatermarkApp",
+                "-srcfolder", str(app_path),
+                "-ov", "-format", "UDZO",
+                str(dmg_path)
+            ], check=True)
         print("\nDMG创建完成！")
-        print(f"安装文件位于: {os.path.abspath('dist/WatermarkApp.dmg')}")
+        print(f"安装文件位于: {os.path.abspath(str(dmg_path))}")
         return True
     except subprocess.SubprocessError as e:
-        print(f"创建DMG时出错: {e}")
-        return False
+        print(f"create-dmg 创建失败，尝试使用 hdiutil 回退: {e}")
+        try:
+            dmg_path = Path("dist/WatermarkApp.dmg")
+            if dmg_path.exists():
+                try:
+                    dmg_path.unlink()
+                except Exception:
+                    pass
+            subprocess.run([
+                "hdiutil", "create",
+                "-volname", "WatermarkApp",
+                "-srcfolder", str(app_path),
+                "-ov", "-format", "UDZO",
+                str(dmg_path)
+            ], check=True)
+            print("\nDMG回退创建完成！")
+            print(f"安装文件位于: {os.path.abspath(str(dmg_path))}")
+            return True
+        except subprocess.SubprocessError as e2:
+            print(f"创建DMG时出错（hdiutil 回退也失败）: {e2}")
+            return False
 
 if __name__ == "__main__":
     # 确保resources目录存在
