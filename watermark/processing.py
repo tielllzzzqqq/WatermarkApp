@@ -20,6 +20,7 @@ def apply_text_watermark(
     shadow_offset: Tuple[int, int] = (2, 2),
     shadow_color: Optional[str] = None,
     render_scale: int = 1,
+    rotation_deg: int = 0,
 ) -> Image.Image:
     """Apply a text watermark to `img` and return a new image.
 
@@ -43,33 +44,6 @@ def apply_text_watermark(
     # Final low-res size after downscale
     text_width = max(1, text_width_hr // scale)
     text_height = max(1, text_height_hr // scale)
-
-    # Resolve position
-    if position == "top-left":
-        pos = (10, 10)
-    elif position == "top":
-        pos = ((width - text_width) // 2, 10)
-    elif position == "top-right":
-        pos = (width - text_width - 10, 10)
-    elif position == "left":
-        pos = (10, (height - text_height) // 2)
-    elif position == "center":
-        pos = ((width - text_width) // 2, (height - text_height) // 2)
-    elif position == "right":
-        pos = (width - text_width - 10, (height - text_height) // 2)
-    elif position == "bottom-left":
-        pos = (10, height - text_height - 10)
-    elif position == "bottom":
-        pos = ((width - text_width) // 2, height - text_height - 10)
-    elif position == "bottom-right":
-        pos = (width - text_width - 10, height - text_height - 10)
-    else:
-        # custom
-        if custom_point is None:
-            pos = (0, 0)
-        else:
-            pos = (max(0, min(width - text_width, int(custom_point[0]))),
-                   max(0, min(height - text_height, int(custom_point[1]))))
 
     # Prepare layers
     watermark = Image.new('RGBA', img.size, (0, 0, 0, 0))
@@ -126,6 +100,39 @@ def apply_text_watermark(
     dest_h = max(1, text_layer_hr.size[1] // scale)
     text_layer = text_layer_hr.resize((dest_w, dest_h), Image.LANCZOS)
 
+    # Apply rotation if requested
+    angle = int(rotation_deg) % 360
+    if angle:
+        text_layer = text_layer.rotate(angle, expand=True, resample=Image.BICUBIC)
+
+    # Resolve position based on final layer size
+    lw, lh = text_layer.size
+    if position == "top-left":
+        pos = (10, 10)
+    elif position == "top":
+        pos = ((width - lw) // 2, 10)
+    elif position == "top-right":
+        pos = (width - lw - 10, 10)
+    elif position == "left":
+        pos = (10, (height - lh) // 2)
+    elif position == "center":
+        pos = ((width - lw) // 2, (height - lh) // 2)
+    elif position == "right":
+        pos = (width - lw - 10, (height - lh) // 2)
+    elif position == "bottom-left":
+        pos = (10, height - lh - 10)
+    elif position == "bottom":
+        pos = ((width - lw) // 2, height - lh - 10)
+    elif position == "bottom-right":
+        pos = (width - lw - 10, height - lh - 10)
+    else:
+        # custom
+        if custom_point is None:
+            pos = (0, 0)
+        else:
+            pos = (max(0, min(width - lw, int(custom_point[0]))),
+                   max(0, min(height - lh, int(custom_point[1]))))
+
     watermark.paste(text_layer, pos, text_layer)
     return Image.alpha_composite(img.convert("RGBA"), watermark)
 
@@ -141,6 +148,7 @@ def apply_image_watermark(
     scale_width: int = 0,
     scale_height: int = 0,
     keep_aspect: bool = True,
+    rotation_deg: int = 0,
 ) -> Image.Image:
     """Overlay an image watermark onto `img`.
 
@@ -184,6 +192,11 @@ def apply_image_watermark(
 
     wm_resized = wm.resize((tw, th), Image.LANCZOS)
 
+    # Apply rotation if requested
+    angle = int(rotation_deg) % 360
+    if angle:
+        wm_resized = wm_resized.rotate(angle, expand=True, resample=Image.BICUBIC)
+
     # Apply overall opacity by scaling existing alpha
     overall_alpha = int(255 * max(0, min(100, int(opacity_percent))) / 100.0)
     r, g, b, a = wm_resized.split()
@@ -191,31 +204,32 @@ def apply_image_watermark(
     wm_resized = Image.merge("RGBA", (r, g, b, a))
 
     bw, bh = base.size
+    rw, rh = wm_resized.size
     # Resolve position
     if position == "top-left":
         pos = (10, 10)
     elif position == "top":
-        pos = ((bw - tw) // 2, 10)
+        pos = ((bw - rw) // 2, 10)
     elif position == "top-right":
-        pos = (bw - tw - 10, 10)
+        pos = (bw - rw - 10, 10)
     elif position == "left":
-        pos = (10, (bh - th) // 2)
+        pos = (10, (bh - rh) // 2)
     elif position == "center":
-        pos = ((bw - tw) // 2, (bh - th) // 2)
+        pos = ((bw - rw) // 2, (bh - rh) // 2)
     elif position == "right":
-        pos = (bw - tw - 10, (bh - th) // 2)
+        pos = (bw - rw - 10, (bh - rh) // 2)
     elif position == "bottom-left":
-        pos = (10, bh - th - 10)
+        pos = (10, bh - rh - 10)
     elif position == "bottom":
-        pos = ((bw - tw) // 2, bh - th - 10)
+        pos = ((bw - rw) // 2, bh - rh - 10)
     elif position == "bottom-right":
-        pos = (bw - tw - 10, bh - th - 10)
+        pos = (bw - rw - 10, bh - rh - 10)
     else:
         if custom_point is None:
             pos = (0, 0)
         else:
-            pos = (max(0, min(bw - tw, int(custom_point[0]))),
-                   max(0, min(bh - th, int(custom_point[1]))))
+            pos = (max(0, min(bw - rw, int(custom_point[0]))),
+                   max(0, min(bh - rh, int(custom_point[1]))))
 
     layer = Image.new("RGBA", base.size, (0, 0, 0, 0))
     layer.paste(wm_resized, pos, wm_resized)

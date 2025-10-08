@@ -66,5 +66,7 @@ def normalize_template_fields(tpl: Dict) -> Dict:
         "image_scale_width": tpl.get("image_scale_width", 200),
         "image_scale_height": tpl.get("image_scale_height", 200),
         "image_keep_aspect": tpl.get("image_keep_aspect", True),
+        # Rotation for both text and image watermarks
+        "watermark_rotation": tpl.get("watermark_rotation", 0),
     }
     return fields

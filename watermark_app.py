@@ -104,6 +104,8 @@ class WatermarkApp(QMainWindow):
         self.image_scale_width = 200
         self.image_scale_height = 200
         self.image_keep_aspect = True
+        # 通用：水印旋转角度（0-360）
+        self.watermark_rotation = 0
         
         # 设置中心部件
         self.central_widget = QWidget()
@@ -357,6 +359,7 @@ class WatermarkApp(QMainWindow):
                 scale_width=int(getattr(self, "image_scale_width", 200)),
                 scale_height=int(getattr(self, "image_scale_height", 200)),
                 keep_aspect=bool(getattr(self, "image_keep_aspect", True)),
+                rotation_deg=int(getattr(self, "watermark_rotation", 0)),
             )
         else:
             return apply_text_watermark(
@@ -376,6 +379,7 @@ class WatermarkApp(QMainWindow):
                 shadow_offset=(int(getattr(self, "font_shadow_offset_x", 2)), int(getattr(self, "font_shadow_offset_y", 2))),
                 shadow_color=getattr(self, "font_shadow_color", "#000000"),
                 render_scale=int(getattr(self, "render_scale", 1)),
+                rotation_deg=int(getattr(self, "watermark_rotation", 0)),
             )
 
     def _load_font(self, font_size):
@@ -524,6 +528,13 @@ class WatermarkApp(QMainWindow):
         """透明度变更"""
         self.watermark_opacity = value
         self.opacity_value_label.setText(f"{value}%")
+        self.update_preview()
+
+    def on_rotation_changed(self, value):
+        """旋转角度变更"""
+        self.watermark_rotation = int(value)
+        if hasattr(self, "rotation_value_label"):
+            self.rotation_value_label.setText(f"{int(value)}°")
         self.update_preview()
 
     # ==== 图片水印事件 ====
@@ -744,6 +755,7 @@ class WatermarkApp(QMainWindow):
                 "image_scale_width": self.image_scale_width,
                 "image_scale_height": self.image_scale_height,
                 "image_keep_aspect": self.image_keep_aspect,
+                "watermark_rotation": self.watermark_rotation,
             }
             
             self.templates = add_or_update_template(self.templates, template)
@@ -799,10 +811,15 @@ class WatermarkApp(QMainWindow):
         self.image_scale_width = int(tpl.get("image_scale_width", self.image_scale_width))
         self.image_scale_height = int(tpl.get("image_scale_height", self.image_scale_height))
         self.image_keep_aspect = bool(tpl.get("image_keep_aspect", self.image_keep_aspect))
+        self.watermark_rotation = int(tpl.get("watermark_rotation", getattr(self, "watermark_rotation", 0)))
         
         # 更新UI
         self.text_input.setText(self.watermark_text)
         self.opacity_slider.setValue(self.watermark_opacity)
+        if hasattr(self, "rotation_slider"):
+            self.rotation_slider.setValue(int(self.watermark_rotation))
+        if hasattr(self, "rotation_value_label"):
+            self.rotation_value_label.setText(f"{int(self.watermark_rotation)}°")
         
         if self.output_format.lower() == "jpeg":
             self.format_combo.setCurrentIndex(1)
@@ -932,6 +949,7 @@ class WatermarkApp(QMainWindow):
             "image_scale_width": self.image_scale_width,
             "image_scale_height": self.image_scale_height,
             "image_keep_aspect": self.image_keep_aspect,
+            "watermark_rotation": self.watermark_rotation,
             "templates": self.templates
         }
         
@@ -979,6 +997,7 @@ class WatermarkApp(QMainWindow):
                 self.image_scale_width = int(settings.get("image_scale_width", self.image_scale_width))
                 self.image_scale_height = int(settings.get("image_scale_height", self.image_scale_height))
                 self.image_keep_aspect = bool(settings.get("image_keep_aspect", self.image_keep_aspect))
+                self.watermark_rotation = int(settings.get("watermark_rotation", getattr(self, "watermark_rotation", 0)))
                 
                 # 更新UI
                 self.text_input.setText(self.watermark_text)
@@ -1078,6 +1097,10 @@ class WatermarkApp(QMainWindow):
                 if hasattr(self, "percent_row") and hasattr(self, "free_row"):
                     self.percent_row.setVisible(self.image_scale_mode == "percent")
                     self.free_row.setVisible(self.image_scale_mode == "free")
+                if hasattr(self, "rotation_slider"):
+                    self.rotation_slider.setValue(int(self.watermark_rotation))
+                if hasattr(self, "rotation_value_label"):
+                    self.rotation_value_label.setText(f"{int(self.watermark_rotation)}°")
                 # 刷新预览
                 self.update_preview()
         except Exception as e:

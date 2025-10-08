@@ -143,6 +143,18 @@ class PreviewBasicUI:
         opacity_layout.addWidget(opacity_value_label)
         bs_layout.addLayout(opacity_layout)
 
+        # 旋转角度
+        rotation_layout = QHBoxLayout()
+        rotation_layout.addWidget(QLabel("旋转角度:"))
+        rotation_slider = QSlider(Qt.Horizontal)
+        rotation_slider.setRange(0, 360)
+        rotation_slider.setValue(int(getattr(host, "watermark_rotation", 0)))
+        rotation_slider.valueChanged.connect(host.on_rotation_changed)
+        rotation_value_label = QLabel(f"{int(getattr(host, 'watermark_rotation', 0))}°")
+        rotation_layout.addWidget(rotation_slider)
+        rotation_layout.addWidget(rotation_value_label)
+        bs_layout.addLayout(rotation_layout)
+
         # 引用回填
         host.watermark_type_combo = type_combo
         host.text_row = text_row
@@ -160,6 +172,8 @@ class PreviewBasicUI:
         host.keep_aspect_check = keep_check
         host.opacity_slider = opacity_slider
         host.opacity_value_label = opacity_value_label
+        host.rotation_slider = rotation_slider
+        host.rotation_value_label = rotation_value_label
 
         # 初始行可见性
         _is_image = (current_type == "image")
