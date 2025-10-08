@@ -51,6 +51,7 @@ from watermark.settings_io import read_settings, write_settings
 from watermark.templates_io import add_or_update_template, list_template_names, find_template, normalize_template_fields
 from watermark.media import is_supported_image, scan_directory_for_images, make_output_basename
 from watermark.preview import pil_to_qimage
+from ui.preview_basic import PreviewBasicUI
 
 class WatermarkApp(QMainWindow):
     def __init__(self):
@@ -129,47 +130,16 @@ class WatermarkApp(QMainWindow):
         right_panel = QWidget()
         right_layout = QVBoxLayout(right_panel)
         
-        # 预览区域
-        preview_group = QGroupBox("预览")
-        preview_layout = QVBoxLayout(preview_group)
-        self.preview_label = QLabel()
-        self.preview_label.setAlignment(Qt.AlignCenter)
-        self.preview_label.setMinimumSize(400, 300)
-        self.preview_label.setStyleSheet("background-color: #f0f0f0; border: 1px solid #ddd;")
-        self.preview_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        # 预览区支持鼠标事件以手动拖拽水印（默认开启）
-        self.preview_label.setMouseTracking(True)
-        self.preview_label.mousePressEvent = self._preview_mouse_press_event
-        self.preview_label.mouseMoveEvent = self._preview_mouse_move_event
-        # 预览区支持拖放导入
-        self.preview_label.setAcceptDrops(True)
-        self.preview_label.dragEnterEvent = self._drag_enter_event
-        self.preview_label.dropEvent = self._drop_event
-        preview_layout.addWidget(self.preview_label)
+        # 预览与基础设置（子组件）
+        _pb = PreviewBasicUI(self)
+        preview_group = _pb.preview_group
         
         # 水印设置
         settings_group = QGroupBox("水印设置")
         settings_layout = QVBoxLayout(settings_group)
         
-        # 文本水印设置
-        text_layout = QHBoxLayout()
-        text_layout.addWidget(QLabel("水印文本:"))
-        self.text_input = QLineEdit(self.watermark_text)
-        self.text_input.textChanged.connect(self.on_watermark_text_changed)
-        text_layout.addWidget(self.text_input)
-        settings_layout.addLayout(text_layout)
-        
-        # 透明度设置
-        opacity_layout = QHBoxLayout()
-        opacity_layout.addWidget(QLabel("透明度:"))
-        self.opacity_slider = QSlider(Qt.Horizontal)
-        self.opacity_slider.setRange(0, 100)
-        self.opacity_slider.setValue(self.watermark_opacity)
-        self.opacity_slider.valueChanged.connect(self.on_opacity_changed)
-        self.opacity_value_label = QLabel(f"{self.watermark_opacity}%")
-        opacity_layout.addWidget(self.opacity_slider)
-        opacity_layout.addWidget(self.opacity_value_label)
-        settings_layout.addLayout(opacity_layout)
+        # 基础设置（文本与透明度）
+        settings_layout.addWidget(_pb.basic_settings)
         
         # 字体设置（高级）
         font_group = QGroupBox("字体设置（可选）")
