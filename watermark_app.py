@@ -45,7 +45,7 @@ except Exception as e:
 
 # 抽离模块：字体、处理、导出、设置
 from watermark.fonts import scan_system_font_files, load_font
-from watermark.processing import apply_text_watermark
+from watermark.processing import apply_text_watermark, apply_image_watermark
 from watermark.exporting import resize_image_proportionally, save_image
 from watermark.settings_io import read_settings, write_settings
 from watermark.templates_io import add_or_update_template, list_template_names, find_template, normalize_template_fields
@@ -96,6 +96,14 @@ class WatermarkApp(QMainWindow):
         self.font_shadow_color = "#000000"
         self.render_scale = 1
         self._available_fonts = scan_system_font_files()
+        # 图片水印设置（高级）
+        self.watermark_type = "text"  # text | image
+        self.image_watermark_path = None
+        self.image_scale_mode = "percent"  # percent | free
+        self.image_scale_percent = 50
+        self.image_scale_width = 200
+        self.image_scale_height = 200
+        self.image_keep_aspect = True
         
         # 设置中心部件
         self.central_widget = QWidget()
@@ -337,24 +345,38 @@ class WatermarkApp(QMainWindow):
     def apply_watermark(self, img):
         """应用水印到图片（委托处理模块）"""
         custom_point = (self.watermark_position_custom.x(), self.watermark_position_custom.y())
-        return apply_text_watermark(
-            img,
-            text=self.watermark_text,
-            position=self.watermark_position,
-            custom_point=custom_point,
-            opacity_percent=int(self.watermark_opacity),
-            font_path=self.font_path,
-            font_size_user=int(self.font_size_user),
-            font_bold=bool(self.font_bold),
-            font_italic=bool(self.font_italic),
-            font_color=self.font_color,
-            stroke_width=int(getattr(self, "font_stroke_width", 0)),
-            stroke_color=getattr(self, "font_stroke_color", "#000000"),
-            shadow_enabled=bool(getattr(self, "font_shadow_enabled", False)),
-            shadow_offset=(int(getattr(self, "font_shadow_offset_x", 2)), int(getattr(self, "font_shadow_offset_y", 2))),
-            shadow_color=getattr(self, "font_shadow_color", "#000000"),
-            render_scale=int(getattr(self, "render_scale", 1)),
-        )
+        if getattr(self, "watermark_type", "text") == "image" and self.image_watermark_path:
+            return apply_image_watermark(
+                img,
+                watermark_path=self.image_watermark_path,
+                position=self.watermark_position,
+                custom_point=custom_point,
+                opacity_percent=int(self.watermark_opacity),
+                scale_mode=str(getattr(self, "image_scale_mode", "percent")),
+                scale_percent=int(getattr(self, "image_scale_percent", 50)),
+                scale_width=int(getattr(self, "image_scale_width", 200)),
+                scale_height=int(getattr(self, "image_scale_height", 200)),
+                keep_aspect=bool(getattr(self, "image_keep_aspect", True)),
+            )
+        else:
+            return apply_text_watermark(
+                img,
+                text=self.watermark_text,
+                position=self.watermark_position,
+                custom_point=custom_point,
+                opacity_percent=int(self.watermark_opacity),
+                font_path=self.font_path,
+                font_size_user=int(self.font_size_user),
+                font_bold=bool(self.font_bold),
+                font_italic=bool(self.font_italic),
+                font_color=self.font_color,
+                stroke_width=int(getattr(self, "font_stroke_width", 0)),
+                stroke_color=getattr(self, "font_stroke_color", "#000000"),
+                shadow_enabled=bool(getattr(self, "font_shadow_enabled", False)),
+                shadow_offset=(int(getattr(self, "font_shadow_offset_x", 2)), int(getattr(self, "font_shadow_offset_y", 2))),
+                shadow_color=getattr(self, "font_shadow_color", "#000000"),
+                render_scale=int(getattr(self, "render_scale", 1)),
+            )
 
     def _load_font(self, font_size):
         """包装为外部统一的字体加载器（保留兼容调用）。"""
@@ -502,6 +524,69 @@ class WatermarkApp(QMainWindow):
         """透明度变更"""
         self.watermark_opacity = value
         self.opacity_value_label.setText(f"{value}%")
+        self.update_preview()
+
+    # ==== 图片水印事件 ====
+    def on_watermark_type_changed(self, idx):
+        try:
+            combo = self.watermark_type_combo
+            data = combo.itemData(idx)
+            self.watermark_type = data or ("text" if idx == 0 else "image")
+        except Exception:
+            self.watermark_type = "text" if idx == 0 else "image"
+        # 切换可见性
+        is_image = (self.watermark_type == "image")
+        if hasattr(self, "text_row"):
+            self.text_row.setVisible(not is_image)
+        if hasattr(self, "image_row"):
+            self.image_row.setVisible(is_image)
+        if hasattr(self, "scale_row"):
+            self.scale_row.setVisible(is_image)
+        self.update_preview()
+
+    def on_select_image_watermark(self):
+        dlg = QFileDialog(self)
+        dlg.setFileMode(QFileDialog.ExistingFile)
+        dlg.setNameFilter("图片文件 (*.png *.jpg *.jpeg *.bmp *.tiff)")
+        if dlg.exec_():
+            files = dlg.selectedFiles()
+            if files:
+                self.image_watermark_path = files[0]
+                if hasattr(self, "image_path_edit"):
+                    self.image_path_edit.setText(self.image_watermark_path)
+                self.update_preview()
+
+    def on_image_watermark_path_changed(self, text):
+        self.image_watermark_path = text.strip() or None
+        self.update_preview()
+
+    def on_image_scale_mode_changed(self, idx):
+        try:
+            data = self.scale_mode_combo.itemData(idx)
+            self.image_scale_mode = data or ("percent" if idx == 0 else "free")
+        except Exception:
+            self.image_scale_mode = "percent" if idx == 0 else "free"
+        # 行可见性
+        if hasattr(self, "percent_row"):
+            self.percent_row.setVisible(self.image_scale_mode == "percent")
+        if hasattr(self, "free_row"):
+            self.free_row.setVisible(self.image_scale_mode == "free")
+        self.update_preview()
+
+    def on_image_scale_percent_changed(self, val):
+        self.image_scale_percent = int(val)
+        self.update_preview()
+
+    def on_image_scale_width_changed(self, val):
+        self.image_scale_width = int(val)
+        self.update_preview()
+
+    def on_image_scale_height_changed(self, val):
+        self.image_scale_height = int(val)
+        self.update_preview()
+
+    def on_image_keep_aspect_changed(self, state):
+        self.image_keep_aspect = (state == Qt.Checked)
         self.update_preview()
     
     def on_position_selected(self):
@@ -651,6 +736,14 @@ class WatermarkApp(QMainWindow):
                 "font_shadow_offset_y": self.font_shadow_offset_y,
                 "font_shadow_color": self.font_shadow_color,
                 "render_scale": self.render_scale,
+                # 图片水印相关
+                "watermark_type": self.watermark_type,
+                "image_watermark_path": self.image_watermark_path,
+                "image_scale_mode": self.image_scale_mode,
+                "image_scale_percent": self.image_scale_percent,
+                "image_scale_width": self.image_scale_width,
+                "image_scale_height": self.image_scale_height,
+                "image_keep_aspect": self.image_keep_aspect,
             }
             
             self.templates = add_or_update_template(self.templates, template)
@@ -698,6 +791,14 @@ class WatermarkApp(QMainWindow):
         self.font_shadow_offset_y = int(tpl.get("font_shadow_offset_y", self.font_shadow_offset_y))
         self.font_shadow_color = tpl.get("font_shadow_color", self.font_shadow_color)
         self.render_scale = int(tpl.get("render_scale", self.render_scale))
+        # 图片水印
+        self.watermark_type = tpl.get("watermark_type", self.watermark_type)
+        self.image_watermark_path = tpl.get("image_watermark_path", self.image_watermark_path)
+        self.image_scale_mode = tpl.get("image_scale_mode", self.image_scale_mode)
+        self.image_scale_percent = int(tpl.get("image_scale_percent", self.image_scale_percent))
+        self.image_scale_width = int(tpl.get("image_scale_width", self.image_scale_width))
+        self.image_scale_height = int(tpl.get("image_scale_height", self.image_scale_height))
+        self.image_keep_aspect = bool(tpl.get("image_keep_aspect", self.image_keep_aspect))
         
         # 更新UI
         self.text_input.setText(self.watermark_text)
@@ -759,6 +860,30 @@ class WatermarkApp(QMainWindow):
         if hasattr(self, "resize_percent_spin"):
             self.resize_percent_spin.setValue(int(self.resize_percent))
         self._update_resize_rows_visibility()
+
+        # 图片水印 UI 同步
+        if hasattr(self, "watermark_type_combo"):
+            self.watermark_type_combo.setCurrentIndex(0 if self.watermark_type == "text" else 1)
+        if hasattr(self, "image_path_edit"):
+            self.image_path_edit.setText(str(self.image_watermark_path or ""))
+        if hasattr(self, "scale_mode_combo"):
+            self.scale_mode_combo.setCurrentIndex(0 if self.image_scale_mode == "percent" else 1)
+        if hasattr(self, "percent_spin"):
+            self.percent_spin.setValue(int(self.image_scale_percent))
+        if hasattr(self, "width_spin"):
+            self.width_spin.setValue(int(self.image_scale_width))
+        if hasattr(self, "height_spin"):
+            self.height_spin.setValue(int(self.image_scale_height))
+        if hasattr(self, "keep_aspect_check"):
+            self.keep_aspect_check.setChecked(bool(self.image_keep_aspect))
+        if hasattr(self, "text_row") and hasattr(self, "image_row") and hasattr(self, "scale_row"):
+            _is_image = (self.watermark_type == "image")
+            self.text_row.setVisible(not _is_image)
+            self.image_row.setVisible(_is_image)
+            self.scale_row.setVisible(_is_image)
+        if hasattr(self, "percent_row") and hasattr(self, "free_row"):
+            self.percent_row.setVisible(self.image_scale_mode == "percent")
+            self.free_row.setVisible(self.image_scale_mode == "free")
         
         if self.output_naming == "prefix":
             self.naming_prefix_radio.setChecked(True)
@@ -799,6 +924,14 @@ class WatermarkApp(QMainWindow):
             "font_shadow_offset_y": self.font_shadow_offset_y,
             "font_shadow_color": self.font_shadow_color,
             "render_scale": self.render_scale,
+            # 图片水印设置
+            "watermark_type": self.watermark_type,
+            "image_watermark_path": self.image_watermark_path,
+            "image_scale_mode": self.image_scale_mode,
+            "image_scale_percent": self.image_scale_percent,
+            "image_scale_width": self.image_scale_width,
+            "image_scale_height": self.image_scale_height,
+            "image_keep_aspect": self.image_keep_aspect,
             "templates": self.templates
         }
         
@@ -838,6 +971,14 @@ class WatermarkApp(QMainWindow):
                 self.font_shadow_offset_y = int(settings.get("font_shadow_offset_y", self.font_shadow_offset_y))
                 self.font_shadow_color = settings.get("font_shadow_color", self.font_shadow_color)
                 self.render_scale = int(settings.get("render_scale", self.render_scale))
+                # 图片水印设置
+                self.watermark_type = settings.get("watermark_type", self.watermark_type)
+                self.image_watermark_path = settings.get("image_watermark_path", self.image_watermark_path)
+                self.image_scale_mode = settings.get("image_scale_mode", self.image_scale_mode)
+                self.image_scale_percent = int(settings.get("image_scale_percent", self.image_scale_percent))
+                self.image_scale_width = int(settings.get("image_scale_width", self.image_scale_width))
+                self.image_scale_height = int(settings.get("image_scale_height", self.image_scale_height))
+                self.image_keep_aspect = bool(settings.get("image_keep_aspect", self.image_keep_aspect))
                 
                 # 更新UI
                 self.text_input.setText(self.watermark_text)
@@ -914,6 +1055,29 @@ class WatermarkApp(QMainWindow):
                 if hasattr(self, "resize_percent_spin"):
                     self.resize_percent_spin.setValue(int(self.resize_percent))
                 self._update_resize_rows_visibility()
+                # 图片水印 UI 同步
+                if hasattr(self, "watermark_type_combo"):
+                    self.watermark_type_combo.setCurrentIndex(0 if self.watermark_type == "text" else 1)
+                if hasattr(self, "image_path_edit"):
+                    self.image_path_edit.setText(str(self.image_watermark_path or ""))
+                if hasattr(self, "scale_mode_combo"):
+                    self.scale_mode_combo.setCurrentIndex(0 if self.image_scale_mode == "percent" else 1)
+                if hasattr(self, "percent_spin"):
+                    self.percent_spin.setValue(int(self.image_scale_percent))
+                if hasattr(self, "width_spin"):
+                    self.width_spin.setValue(int(self.image_scale_width))
+                if hasattr(self, "height_spin"):
+                    self.height_spin.setValue(int(self.image_scale_height))
+                if hasattr(self, "keep_aspect_check"):
+                    self.keep_aspect_check.setChecked(bool(self.image_keep_aspect))
+                if hasattr(self, "text_row") and hasattr(self, "image_row") and hasattr(self, "scale_row"):
+                    _is_image = (self.watermark_type == "image")
+                    self.text_row.setVisible(not _is_image)
+                    self.image_row.setVisible(_is_image)
+                    self.scale_row.setVisible(_is_image)
+                if hasattr(self, "percent_row") and hasattr(self, "free_row"):
+                    self.percent_row.setVisible(self.image_scale_mode == "percent")
+                    self.free_row.setVisible(self.image_scale_mode == "free")
                 # 刷新预览
                 self.update_preview()
         except Exception as e:

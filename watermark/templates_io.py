@@ -50,5 +50,21 @@ def normalize_template_fields(tpl: Dict) -> Dict:
         "font_bold": tpl.get("font_bold", False),
         "font_italic": tpl.get("font_italic", False),
         "font_color": tpl.get("font_color", "#000000"),
+        # Advanced text style fields
+        "font_stroke_width": tpl.get("font_stroke_width", 0),
+        "font_stroke_color": tpl.get("font_stroke_color", "#000000"),
+        "font_shadow_enabled": tpl.get("font_shadow_enabled", False),
+        "font_shadow_offset_x": tpl.get("font_shadow_offset_x", 2),
+        "font_shadow_offset_y": tpl.get("font_shadow_offset_y", 2),
+        "font_shadow_color": tpl.get("font_shadow_color", "#000000"),
+        "render_scale": tpl.get("render_scale", 1),
+        # Image watermark fields
+        "watermark_type": tpl.get("watermark_type", "text"),
+        "image_watermark_path": tpl.get("image_watermark_path"),
+        "image_scale_mode": tpl.get("image_scale_mode", "percent"),
+        "image_scale_percent": tpl.get("image_scale_percent", 50),
+        "image_scale_width": tpl.get("image_scale_width", 200),
+        "image_scale_height": tpl.get("image_scale_height", 200),
+        "image_keep_aspect": tpl.get("image_keep_aspect", True),
     }
     return fields

@@ -128,3 +128,95 @@ def apply_text_watermark(
 
     watermark.paste(text_layer, pos, text_layer)
     return Image.alpha_composite(img.convert("RGBA"), watermark)
+
+
+def apply_image_watermark(
+    img: Image.Image,
+    watermark_path: str,
+    position: str,
+    custom_point: Optional[Tuple[int, int]],
+    opacity_percent: int,
+    scale_mode: str = "percent",  # "percent" | "free"
+    scale_percent: int = 100,
+    scale_width: int = 0,
+    scale_height: int = 0,
+    keep_aspect: bool = True,
+) -> Image.Image:
+    """Overlay an image watermark onto `img`.
+
+    - Supports PNG with transparency (alpha channel preserved).
+    - `opacity_percent`: 0-100 overall watermark transparency.
+    - `scale_mode`: "percent" (relative) or "free" (explicit width/height).
+    - `keep_aspect` applies when `scale_mode == "free"`.
+    - `position`/`custom_point` follow the same rules as text watermark.
+    """
+    base = img.convert("RGBA")
+    try:
+        wm = Image.open(watermark_path).convert("RGBA")
+    except Exception:
+        # If opening watermark fails, just return original image
+        return base
+
+    # Compute target size
+    ow, oh = wm.size
+    if scale_mode == "percent":
+        p = max(1, int(scale_percent))
+        tw = max(1, int(ow * p / 100.0))
+        th = max(1, int(oh * p / 100.0))
+    else:
+        # free mode
+        w = int(scale_width)
+        h = int(scale_height)
+        if keep_aspect:
+            if w > 0:
+                ratio = w / float(ow)
+                tw = max(1, w)
+                th = max(1, int(oh * ratio))
+            elif h > 0:
+                ratio = h / float(oh)
+                th = max(1, h)
+                tw = max(1, int(ow * ratio))
+            else:
+                tw, th = ow, oh
+        else:
+            tw = max(1, w) if w > 0 else ow
+            th = max(1, h) if h > 0 else oh
+
+    wm_resized = wm.resize((tw, th), Image.LANCZOS)
+
+    # Apply overall opacity by scaling existing alpha
+    overall_alpha = int(255 * max(0, min(100, int(opacity_percent))) / 100.0)
+    r, g, b, a = wm_resized.split()
+    a = a.point(lambda x: int(x * overall_alpha / 255))
+    wm_resized = Image.merge("RGBA", (r, g, b, a))
+
+    bw, bh = base.size
+    # Resolve position
+    if position == "top-left":
+        pos = (10, 10)
+    elif position == "top":
+        pos = ((bw - tw) // 2, 10)
+    elif position == "top-right":
+        pos = (bw - tw - 10, 10)
+    elif position == "left":
+        pos = (10, (bh - th) // 2)
+    elif position == "center":
+        pos = ((bw - tw) // 2, (bh - th) // 2)
+    elif position == "right":
+        pos = (bw - tw - 10, (bh - th) // 2)
+    elif position == "bottom-left":
+        pos = (10, bh - th - 10)
+    elif position == "bottom":
+        pos = ((bw - tw) // 2, bh - th - 10)
+    elif position == "bottom-right":
+        pos = (bw - tw - 10, bh - th - 10)
+    else:
+        if custom_point is None:
+            pos = (0, 0)
+        else:
+            pos = (max(0, min(bw - tw, int(custom_point[0]))),
+                   max(0, min(bh - th, int(custom_point[1]))))
+
+    layer = Image.new("RGBA", base.size, (0, 0, 0, 0))
+    layer.paste(wm_resized, pos, wm_resized)
+    return Image.alpha_composite(base, layer)
